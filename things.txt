@@ -1,0 +1,53 @@
+记录在一台新的centos7上做的事情
+1、centos7自带了gcc，但是没有g++，用yum install gcc-c++， 来安装有g++的版本
+
+2、没有gdb，安装gdb yum install gdb
+这种安装的gdb版本是7.6.1，后来有需要高一点版本的gdb，又去网上下载7.9的源码，
+然后安装。
+中间缺少了两个东西，分别安装了一下，一个是termcap（源码安装），另一个是textinfo（yum安装）。
+
+3、安装cmake3.14
+先下载
+wget https://cmake.org/files/v3.14/cmake-3.14.0.tar.gz
+tar -zxvf cmake-3.14.0.tar.gz
+cd cmake-3.14.0
+./bootstrap
+make && make install
+cmake --version
+
+4、安装数据库，7.0以上安装mariadb
+yum install mariadb-server mariadb mariadb-devel	//安装
+systemctl start mariadb  	// 开启服务
+systemctl enable mariadb  	// 设置为开机自启动服务
+https://www.cnblogs.com/yhongji/p/9783065.html
+如果需要在自己的电脑上访问远程数据库，还要在数据库里设置权限，否则会被拒绝连接。
+
+5、创建用户gjk，之前直接登录root
+useradd gjk -U -m	//创建用户
+passwd gjk	//修改密码，这个创建用户的初始密码很迷
+增加sudo权限
+visudo		//打开sud配置文件
+gjk     ALL=(ALL)       ALL 	//增加这一行
+之后gjk这个用户就可以使用sudo了。
+
+6、在windows上用VS2019配置linux远程调式服务器代码的参考文章。
+https://www.cnblogs.com/apocelipes/p/11431808.html
+
+7、在华为云控制台上配置安全组规则，放开20000-21000端口。开放端口的时候不仅要给出端口的设置，还要给出ip的设置。
+
+8、配置CLion在windows上远程调试Linux程序
+之前用VS2019来远程调试，体验真是极差。
+首先每次运行程序连接到服务器就卡的很，往往要等10s多才行。
+其次动不动就会出错卡死。
+再者用VS写linux程序，经常会出现找不到头文件的情况，或者找到头文件，代码可以在服务器上运行，
+但是在IDE里却又识别不了，显示红线的问题。
+总之VS就是很难受。
+今天晚上常识用CLion试了一下远程调试，真的只能用丝滑来形容了。下面简单说一下配置过程。
+1、首先需要配置工具链。
+一般在windows上我们会有一个自己配置的工具链，例如我配的MinGW，我们还要配置一个远程工具链，这样就能用服务器上的编译器来编译调试程序了。在设置里Build,Execution,Deployment里->在Toolchains中增加一个工具链->在Environment里选择Remote Host->在Credentials右侧可以有个设置按钮，可以用来配置服务器->配好服务器后在下面把编译器和gdb的位置定位好(gdb版本要高一点，没有就装一个)。这样工具链就配置好了。
+2、接着打开一个项目，在Build,Execution,Deployment中进行cmake的设置。
+增加一个cmake选项->在Build Type后面的Toolchain选择刚才选择好的远程服务器。确定就好。
+3、接下来要配置一下部署环境。部署环境的作用是之后要把本地代码同步到服务器上的位置。
+在设置里Build,Execution,Deployment->Deployment增加一个SFTP->配置好服务器测试连接成功->
+下面这篇文章写的好。
+https://www.cnblogs.com/qiumingcheng/p/11185073.html
