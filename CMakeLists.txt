@@ -13,7 +13,10 @@ link_directories(
 	/usr/lib64/mysql/
 )
 
+add_subdirectory(net)
+add_subdirectory(base)
+
 # 将源代码添加到此项目的可执行文件。
-add_executable (KyImServer main.cpp ConfigFile.cpp util.cpp db/MysqlDb.cpp db/MysqlQueryResult.cpp)
-target_link_libraries(KyImServer mysqlclient)
+add_executable (KyImServer main.cpp ConfigFile.cpp db/MysqlDb.cpp db/MysqlQueryResult.cpp)
+target_link_libraries(KyImServer mysqlclient base)
 

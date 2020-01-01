@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "ConfigFile.h"
-#include "util.h"
+#include "base/util.h"
 
 
 CConfigFile::CConfigFile(const std::string& configFileName)

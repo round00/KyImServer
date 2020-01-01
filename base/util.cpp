@@ -12,3 +12,8 @@ std::string trim(const std::string& s)
 	
 	return s.substr(b, e-b+1);
 }
+void crash()
+{
+    int* p = nullptr;
+    *p = 0;
+}
