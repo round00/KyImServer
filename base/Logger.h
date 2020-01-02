@@ -7,16 +7,13 @@
 
 #include <string>
 #include <queue>
-#include "Mutex.h"
-#include "Thread.h"
-#include "Condition.h"
 
 /*
  * 一些规则：
  * 1.程序启动的时候打开一个线程，专门用于写日志
- * 2.调用者设置日志目录和级别，实现负责生成文件。日志名：20191231_1627.log
+ * 2.调用者设置日志目录和级别，实现负责生成文件。日志名：20191231_16.log   16是小时
  * 3.日志输出格式：[LEVEL][16:27:30.339][pid][tid][filename:lineno] logcontent
- * 4.每行日志增加最大长度限制，每个日志文件增加最大行数限制
+ * 忽略这个//4.每行日志增加最大长度限制，每个日志文件增加最大行数限制
  * 5.日志线程同时负责检查如果时间到了第二天或者超过了最大行数限制，则生成新的日志文件
  */
 
@@ -35,6 +32,10 @@ enum LOG_LEVEL{
 #define LOGE(...) CLogger::log(LOG_LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
 #define LOGF(...) CLogger::log(LOG_LEVEL_FATAL, __FILE__, __LINE__, __VA_ARGS__)
 
+class CMutex;
+class CThread;
+class CCondition;
+
 class CLogger
 {
 public:
@@ -46,23 +47,29 @@ public:
                 int maxRowLimit = 100000);
     static void     unint();
     static void     log(LOG_LEVEL level, const char* fileName, int lineNo, const char* format, ...);
+
+
+private:
+    static void*    logThreadFunc(void*);
+    static void writeToFile(const std::string& s);
     static FILE*    getLogFile();
     //返回距离上次检查时间的时间间隔
-    static bool     getTimeGap();
+    static bool             checkGapADay();
+    static std::string      getLogFileName();
 
-    static void*    logThreadFunc(void*);
-private:
+
+
     static bool             m_bInit;
-    static std::string      m_strLogFileName;
+    static std::string      m_strLogDir;
     static FILE*            m_fLogFile;
     static LOG_LEVEL        m_nLogLevel;
-    static int              m_nMaxRowLimit;     //单个日志文件最大行数限制
-    static int              m_nCurRowNumber;    //当前日志文件里写了多少行了
+    static int              m_nLastCheckDay;     //上次检查的时间天数是哪一天
 
+    static bool             m_bRunning;
     static CThread          m_logThread;        //写日志线程
     static std::queue<std::string>  m_logQueue; //待写日志队列
-    static CMutex           m_logQueueMutex;    //待写日志队列锁
-    static CCondition       m_logCondition;     //条件变量，同于通知有新日志要写
+    static CMutex           m_mutexLogQueue;    //待写日志队列锁
+    static CCondition       m_condLogQueue;     //条件变量，同于通知有新日志要写
 
 };
 
