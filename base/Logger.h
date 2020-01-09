@@ -43,8 +43,7 @@ public:
     ~CLogger() = delete;
 public:
     static bool     init(const char* logFileName = "",
-                LOG_LEVEL level = LOG_LEVEL_INFO,
-                int maxRowLimit = 100000);
+                        LOG_LEVEL level = LOG_LEVEL_INFO);
     static void     unint();
     static void     log(LOG_LEVEL level, const char* fileName, int lineNo, const char* format, ...);
 
@@ -56,7 +55,7 @@ private:
     //返回距离上次检查时间的时间间隔
     static bool             checkGapADay();
     static std::string      getLogFileName();
-
+    static std::string      getLogLevelStr(LOG_LEVEL level);
 
 
     static bool             m_bInit;

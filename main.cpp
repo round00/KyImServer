@@ -3,14 +3,12 @@
 #include "db/MysqlDb.h"
 #include "ConfigFile.h"
 #include "base/Logger.h"
-#include "base/TestThread.h"
 
 
 
 
 int main()
 {
-
 	//dbserver = 0.0.0.0
 	//dbuser = root
 	//dbpassword = nibuzhidao1
