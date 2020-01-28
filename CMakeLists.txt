@@ -15,8 +15,11 @@ link_directories(
 
 add_subdirectory(net)
 add_subdirectory(base)
+add_subdirectory(thirdparty)
+
+include_directories(thirdparty/)
 
 # 将源代码添加到此项目的可执行文件。
 add_executable (KyImServer main.cpp ConfigFile.cpp db/MysqlDb.cpp db/MysqlQueryResult.cpp)
-target_link_libraries(KyImServer mysqlclient base)
+target_link_libraries(KyImServer mysqlclient base trdparty)
 

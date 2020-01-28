@@ -1,15 +1,45 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <iostream>
 #include "db/MysqlDb.h"
 #include "ConfigFile.h"
 #include "base/Logger.h"
-#include "base/TestThread.h"
+#include "base/Thread.h"
+#include "jsoncpp/json.h"
+#include "md5.h"
+#include "zlib/ZlibUtil.h"
 
-
-
-
+using std::cout;
+using std::endl;
 int main()
 {
+    char buf[] = "Gongjinke Ni Zui shuai!";
+    char combuf[128] = {0};
+    size_t len = sizeof combuf;
+    bool ret = Zlib::compressBuf(buf, strlen(buf), combuf, len);
+    cout<<buf<<endl;
+    cout<<ret<<endl;
+    cout<<combuf<<endl;
+    cout<<len<<endl;
+
+    cout<<"======"<<endl;
+
+    Json::Value json;
+    json["name"] = Json::Value("gjk");
+    json["age"] = Json::Value(21);
+    Json::Value j2;
+    j2["obj"] = json;
+    auto t = j2["obj"].type();
+    cout<<t<<endl;
+    auto tt = j2["obj"];
+    cout<<j2["obj"]["age"].type()<<endl;
+
+
+    cout<<"======"<<endl;
+
+
+    std::cout<<MD5("testmd5").toStr()<<std::endl;
+    return 0;
 
 	//dbserver = 0.0.0.0
 	//dbuser = root

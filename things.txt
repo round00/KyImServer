@@ -4,7 +4,7 @@
 2、没有gdb，安装gdb yum install gdb
 这种安装的gdb版本是7.6.1，后来有需要高一点版本的gdb，又去网上下载7.9的源码，
 然后安装。
-中间缺少了两个东西，分别安装了一下，一个是termcap（源码安装），另一个是textinfo（yum安装）。
+中间缺少了两个东西，分别安装了一下，一个是termcap（源码安装），另一个是texinfo（yum安装）。
 
 3、安装cmake3.14
 先下载

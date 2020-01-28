@@ -5,3 +5,5 @@
 std::string trim(const std::string& s);
 
 void crash();
+
+bool daemon_run();

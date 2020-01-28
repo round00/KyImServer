@@ -1,4 +1,5 @@
 #include "util.h"
+#include <unistd.h>
 
 std::string trim(const std::string& s) 
 {
@@ -16,4 +17,9 @@ void crash()
 {
     int* p = nullptr;
     *p = 0;
+}
+
+bool daemon_run()
+{
+    return ::daemon(1, 0) == 0;
 }

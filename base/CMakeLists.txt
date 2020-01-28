@@ -3,7 +3,8 @@ set(BASE_SRC
         util.cpp
         Mutex.cpp
         Condition.cpp
-        Thread.cpp)
+        Thread.cpp
+        )
 
 add_library(base ${BASE_SRC})
 target_link_libraries(base pthread)
