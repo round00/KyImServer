@@ -21,6 +21,7 @@ public:
     void stop();
 
 private:
+    bool        m_bInit;
     ThreadFunc  m_function;
     pthread_t   m_thread;
 };

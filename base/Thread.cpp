@@ -4,11 +4,10 @@
 
 #include "Thread.h"
 #include <signal.h>
-#include <errno.h>
 
 
 CThread::CThread(ThreadFunc func)
-    :m_function(func),m_thread(0)
+    :m_function(func),m_thread(0),m_bInit(false)
 {
 }
 CThread::~CThread()
@@ -32,12 +31,18 @@ bool CThread::start()
     {
         return false;
     }
-
-    return ::pthread_create(&m_thread, &attr, m_function, nullptr) == 0;
+    if(::pthread_create(&m_thread, &attr, m_function, nullptr)){
+        return false;
+    }
+    m_bInit = true;
+    return true;
 }
 
 bool CThread::isRunning()
 {
+    if(!m_bInit){
+        return false;
+    }
     return ::pthread_kill(m_thread, 0) == 0;
 }
 

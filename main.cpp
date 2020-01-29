@@ -34,6 +34,7 @@ int main()
     auto tt = j2["obj"];
     cout<<j2["obj"]["age"].type()<<endl;
 
+<<<<<<< HEAD
 
     cout<<"======"<<endl;
 
@@ -41,6 +42,10 @@ int main()
     std::cout<<MD5("testmd5").toStr()<<std::endl;
     return 0;
 
+=======
+int main()
+{
+>>>>>>> refs/remotes/origin/master
 	//dbserver = 0.0.0.0
 	//dbuser = root
 	//dbpassword = nibuzhidao1
