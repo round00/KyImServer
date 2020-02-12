@@ -7,7 +7,7 @@
 
 
 CThread::CThread(ThreadFunc func)
-    :m_function(func),m_thread(0),m_bInit(false)
+    :m_bInit(false),m_function(func),m_thread(0)
 {
 }
 CThread::~CThread()

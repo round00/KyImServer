@@ -61,7 +61,7 @@ bool Zlib::uncompressBuf(const std::string& strSrcBuf, std::string& strDestBuf, 
 {
     char* pDestBuf = new char[nDestBufLength];
     memset(pDestBuf, 0, nDestBufLength * sizeof(char));
-    int nPrevDestBufLength = nDestBufLength;
+//    int nPrevDestBufLength = nDestBufLength;
     //解压缩
     int ret = uncompress((Bytef*)pDestBuf, (uLongf*)& nDestBufLength, (const Bytef*)strSrcBuf.c_str(), strSrcBuf.length());
     if (ret != Z_OK)
@@ -120,7 +120,7 @@ bool Zlib::deflate(const std::string& strSrc, std::string& strDest)
             if (err == Z_STREAM_END)
             {
                 // Finish up
-                int kerr = ::deflateEnd(&zS);
+//                int kerr = ::deflateEnd(&zS);
                 //不关心返回结果
                 //if (err != Z_OK)
                 //{
@@ -150,7 +150,7 @@ bool Zlib::deflate(const std::string& strSrc, std::string& strDest)
                 // Set the size to the amount unzipped in this call (including all recursive calls)              
                 strDest.append((const char*)bytesOut, OUTPUT_BUF_SIZE - zS.avail_out);
 
-                int kerr = ::deflateEnd(&zS);
+//                int kerr = ::deflateEnd(&zS);
                 //不关心结果
                 //if (err != Z_OK)
                 //{
@@ -222,7 +222,7 @@ bool Zlib::inflate(const std::string& strSrc, std::string& strDest)
             if (err == Z_STREAM_END)
             {
                 // Finish up
-                int kerr = ::inflateEnd(&zS);
+//                int kerr = ::inflateEnd(&zS);
                 //不关心返回结果
                 //if (err != Z_OK)
                 //{
@@ -252,7 +252,7 @@ bool Zlib::inflate(const std::string& strSrc, std::string& strDest)
                 // Set the size to the amount unzipped in this call (including all recursive calls)
                 strDest.append((const char*)bytesOut, OUTPUT_BUF_SIZE - zS.avail_out);
 
-                int kerr = ::inflateEnd(&zS);
+//                int kerr = ::inflateEnd(&zS);
                 //不关心结果
                 //if (err != Z_OK)
                 //{

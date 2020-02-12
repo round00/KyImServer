@@ -1,0 +1,52 @@
+user数据存储结构：
+用一个hash键来存储一条数据：
+键=user:id:hash，值={id:1, account:gjk, password:123, name:Hello}
+
+用一个字符串键来存储account->id的映射：
+键=user:gjk:str，值=id
+
+用一个集合键存储当前系统中的所有id的值：
+键=user:set，值=(id1，id2，....，idN)
+
+用一个集合键来存储一个用户的好友id
+键=friend:id:set，值=(id1，id2，...，idN)
+
+=========================================================
+一、用redis存储表单数据的方法：
+假设关系数据库中的user如下所示：
+id      account     password    name
+1       gjk         123         Hello
+2       ytt         456         World
+
+1）字符串键来存储。表:id:字段 为键，内容为值。即：
+user:1:account      gjk
+user:1:password     123
+user:1:name         Hello
+
+user:2:account      ytt
+user:2:password     456
+user:2:name         World
+用MSET/MGET可以一次性设置多个键，即一次设置一个用户的各个字段
+用user:list 存所有的用户的id
+用user:$account id 存 account到id的映射，以实现通过account查找用户的功能
+
+这样每个用户需要n个键，n是用户字段的数目
+2）字符串键来存储。表:id 为键，所有字段信息的json字符串为值。即：
+user:1              jsonstr{id:1, account:gjk, password:123, name:Hello}
+user:2              jsonstr{id:2, account:ytt, password:456, name:World}
+每个用户需要1个字符串键，但是需要自己处理json
+
+3）hash键来存储。 表:id:hset为键，值是字段名和字段值的hash表
+user:1:hset         {id:1, account:gjk, password:123, name:Hello}
+每个用户需要1个hash键
+
+二、存储主从表，一对多关系
+从表数据可以用一个hash键来存储。
+用一个集合键来存储某个用户的所有从表数据的主键id。
+
+三、存储主从表，一对超级多关系
+例如一个用户可能有上亿条从表数据，这种情况我们要假设某个用户的从表数据id是连续的。
+从表数据用一个hash键来存储。
+我们用一个键存储某用户的从表数据的开始id，用一个键存该用户从表数据的结束id，增加一条从表就增加结束id。
+
+

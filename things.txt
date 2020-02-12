@@ -51,3 +51,18 @@ https://www.cnblogs.com/apocelipes/p/11431808.html
 在设置里Build,Execution,Deployment->Deployment增加一个SFTP->配置好服务器测试连接成功->
 下面这篇文章写的好。
 https://www.cnblogs.com/qiumingcheng/p/11185073.html
+
+9、安装redis
+下载libevent-2.1.8-stable.tar.gz
+解压make && make install
+将redis源码目录下的redis.conf移动到redis的安装目录下，作为redis启动的配置文件
+修改redis.conf：
+1、修改requirepass，增加登录需要的密码，以免被搞
+2、修改端口8765，修改绑定地址，记得找到所有的bind，都要被注释掉
+3、关闭保护模式
+4、守护进程启动开启
+增加redis.service,把该文件放到/usr/lib/systemd/system/，在/etc/systemd/system/下创建软连接指向该文件。
+systemctl start redis
+systemctl enable redis
+启动redis服务
+
