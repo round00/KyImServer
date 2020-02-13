@@ -259,12 +259,12 @@ bool CRedis::hashSetKeyValue(const string &hash, const string &key, const string
 
 bool CRedis::hashSetKeyValues(const string &hash,
         const std::vector<std::pair<string, string>>& keyvals) {
-    string cmd = "hset " + hash;
+    string cmd = "hmset " + hash;
     for(const auto& p:keyvals){
         cmd += " " + p.first + " " + p.second;
     }
     RedisReply rep = sendACommand(cmd);
-    if(!rep || rep->type!=REDIS_REPLY_STRING){
+    if(!rep || rep->type!=REDIS_REPLY_STATUS){
         return false;
     }
     return strcmp(rep->str, "OK")==0;

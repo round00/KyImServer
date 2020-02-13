@@ -6,6 +6,7 @@
 #define KYIMSERVER_IMSERVER_H
 
 #include "TcpServer.h"
+#include <memory>
 
 class CClientSession;
 
@@ -23,6 +24,12 @@ public:
 
     void        onConnected(CTcpConnection *conn);
     void        onClosed(CTcpConnection *conn);
+
+    //根据uid和client来获取Session
+    std::shared_ptr<CClientSession>
+                getClientSession(uint32_t uid, uint8_t client);
+    //踢用户下线
+    void        kickUser(uint32_t uid, uint8_t client);
 
 private:
     std::map<int, std::shared_ptr<CClientSession>>  m_sessions;

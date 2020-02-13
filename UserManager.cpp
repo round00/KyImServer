@@ -11,8 +11,8 @@ User::User(const std::vector<std::pair<std::string, std::string>>& userinfo):Use
     for(const auto& info : userinfo){
         if(info.first=="uid"){
             m_userId = atoi(info.second.c_str());
-        }else if(info.first=="username"){
-            m_userName = info.second;
+        }else if(info.first=="nickname"){
+            m_nickName = info.second;
         }else if(info.first=="userpass"){
             m_userPassword = info.second;
         }else if(info.first=="account"){
@@ -38,13 +38,13 @@ bool UserManager::loadAllUsers() {
     //先取出所有用户的uid集合，在通过uid集合一个个的取出用户信息
     m_allUserNumber = m_redis->setLength("user:uid:set");
     if(m_allUserNumber==0){
-        //return true;
+        return true;
     }
 
     std::vector<std::string> userids = m_redis->setGetKeys("user:uid:set");
     for(const string& strId: userids){
         auto userInfo = m_redis->hashGetKeyValues("user:" + strId + ":hash");
-        int nId = atoi(strId.c_str());
+        uint32_t nId = atoi(strId.c_str());
         UserPtr user(new User(userInfo));
 
         m_setAllUserId.insert(nId);
@@ -56,12 +56,20 @@ bool UserManager::loadAllUsers() {
 }
 
 int UserManager::addNewUser(const UserPtr& user) {
+    if(user->m_userAccount.empty()){    //账号为空，不能进行注册
+        return 0;
+    }
+    auto it = m_account2Uid.find(user->m_userAccount);
+    if(it != m_account2Uid.end()){  //已存在该用户
+        return 0;
+    }
+
     //添加新用户的话，他还没有uid
     user->m_userId = ++m_allUserNumber;
     //先构造要写入redis的数据
     std::vector<std::pair<string, string>> infos;
     infos.emplace_back(std::make_pair("uid", std::to_string(user->m_userId)));
-    infos.emplace_back(std::make_pair("username", user->m_userName));
+    infos.emplace_back(std::make_pair("nickname", user->m_nickName));
     infos.emplace_back(std::make_pair("userpass", user->m_userPassword));
     infos.emplace_back(std::make_pair("account", user->m_userAccount));
     //将用户信息写入redis
@@ -81,7 +89,7 @@ int UserManager::addNewUser(const UserPtr& user) {
     return user->m_userId;
 }
 
-UserPtr UserManager::getUserByUid(int uid) {
+UserPtr UserManager::getUserByUid(uint32_t uid) {
     auto it = m_users.find(uid);
     if(it==m_users.end())return nullptr;
     return it->second;

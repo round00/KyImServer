@@ -42,6 +42,13 @@ public:
     int retriveBuffer(char *buffer, int len){
         return evbuffer_remove(m_inputBuf, buffer, len);
     }
+    int retriveBuffer(std::string& buffer, int len){
+        char *buf = new char[len];
+        int nLen = evbuffer_remove(m_inputBuf, buf, len);
+        buffer = std::string(buf, nLen);
+        delete[] buf;
+        return nLen;
+    }
 
     //将输入数据复制一份到buffer中，返回复制的数据量
     size_t peekBuffer(char *buffer, int len){
@@ -56,6 +63,10 @@ public:
     //将数据放入写缓冲区
     int addWriteBuffer(const char *buffer, int len){
         return evbuffer_add(m_outputBuf, buffer, len);
+    }
+
+    int addWriteBuffer(const std::string& buffer){
+        return evbuffer_add(m_outputBuf, buffer.c_str(), buffer.length());
     }
 
     //将输入缓冲区的数移动到输出缓冲区

@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+const int MAX_PACKET_SIZE = 10*1024*1024;
 //°üÊÇ·ñÑ¹Ëõ¹ı
 enum
 {

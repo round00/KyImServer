@@ -18,7 +18,7 @@ int main()
 	CConfigFile config("../etc/chatserver.conf");
 	//初始化日志
     std::string logdir = config.getValue("logdir");
-    if(!CLogger::init()){
+    if(!CLogger::init("", LOG_LEVEL_DEBUG)){
         fprintf(stderr, "Logger initialize failed.\n");
         return 0;
     }
