@@ -20,7 +20,7 @@ public:
     void        sendPacket(int32_t cmd, int32_t seq, const char* data, size_t dataLen);
     void        send(const std::string& packet);
     void        sendText(const std::string& packet);
-
+    void        sendPacketWithUserId(int32_t cmd, int32_t seq, std::string& data, uint32_t uid);
     //使当前Session失效
     void        makeInvalid();
 
@@ -28,10 +28,16 @@ public:
     void        onHeartBeat(std::string& data);
     void        onRegister(std::string& data);
     void        onLogin(std::string& data);
-
+    void        onGetFriendList(std::string& data);
+    void        onFindUser(std::string& data);
+    void        onFriendOperator(std::string& data);
+    void        onUserStateChange(std::string& data);
+    void        onUpdateUserInfo(std::string& data);
+    void        onModifyPassword(std::string& data);
     //==========================================
     bool        isLogined(){return m_bLogin;}
     UserPtr     getUser(){return m_user;}
+
 
 private:
     CTcpConnection*     m_conn;

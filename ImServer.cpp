@@ -26,6 +26,18 @@ void CImServer::onClosed(CTcpConnection *conn) {
     }
 }
 
+std::vector<std::shared_ptr<CClientSession>>
+    CImServer::getClientSession(uint32_t uid) {
+    std::vector<std::shared_ptr<CClientSession>> ret;
+    for(const auto& it:m_sessions){
+        auto user = it.second->getUser();
+        if(user && user->m_userId==uid){
+            ret.push_back(it.second);
+        }
+    }
+    return ret;
+}
+
 std::shared_ptr<CClientSession>
         CImServer::getClientSession(uint32_t uid, uint8_t client) {
     for(const auto& it:m_sessions){

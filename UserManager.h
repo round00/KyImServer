@@ -9,9 +9,11 @@
 #include <string>
 #include <set>
 #include <memory>
+#include <vector>
 #include "Redis.h"
 #include "noncopyable.h"
 
+class CFriendGroup;
 
 struct User{
     User():m_userId(0),m_onlineType(0),m_clientType(0){}
@@ -25,6 +27,9 @@ struct User{
     std::string     m_userPhoneNum;
     uint8_t         m_onlineType;       //0：离线，1：在线
     uint8_t         m_clientType;       //1：windows
+    //用户好友列表
+    std::vector<std::shared_ptr<CFriendGroup>>
+                    m_friendGroups;
 };
 typedef std::shared_ptr<User> UserPtr;
 
@@ -43,7 +48,13 @@ public:
     //添加一个新用户，返回这个用户的uid，0无效
     int         addNewUser(const UserPtr& user);
     UserPtr     getUserByUid(uint32_t uid);
+    //这里的更新指的是将数据更新到数据库中
+    bool        updateUserInfo(uint32_t uid);
+    bool        updateUserPassowrd(uint32_t uid);
     UserPtr     getUserByAccount(const std::string& account);
+    std::vector<uint32_t> getFriendListById(uint32_t uid);
+    //获取好友列表
+
 
 private:
     UserManager()= default;

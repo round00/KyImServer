@@ -2,15 +2,17 @@ user数据存储结构：
 用一个hash键来存储一条数据：
 键=user:id:hash，值={id:1, account:gjk, password:123, name:Hello}
 
-用一个字符串键来存储account->id的映射：
-键=user:gjk:str，值=id
-
 用一个集合键存储当前系统中的所有id的值：
 键=user:set，值=(id1，id2，....，idN)
 
-用一个集合键来存储一个用户的好友id
-键=friend:id:set，值=(id1，id2，...，idN)
+用一个集合键来存储一个用户的好友分组id：
+键=user:id:friendgroup:set，值=(gid1, gid2, ...,gidN)
 
+用一个字符串键来存储一个好友分组的名字：
+键=friendgroup:gid:name:str，值=groupname
+
+用一个集合键来存储一个好友分组中的用户id：
+键=friendgroup:gid:userids:set，值=(uid1,uid2,...,uidN)
 =========================================================
 一、用redis存储表单数据的方法：
 假设关系数据库中的user如下所示：

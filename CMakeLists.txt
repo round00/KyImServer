@@ -34,6 +34,7 @@ set(chatserver_src
 		ClientSession.cpp
 		ProtocolStream.cpp
 		Buffer.cpp
+		FriendCroup.cpp
 		)
 # 将源代码添加到此项目的可执行文件。
 add_executable (KyImServer ${chatserver_src})

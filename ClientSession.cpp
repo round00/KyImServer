@@ -11,6 +11,7 @@
 #include "jsoncpp/json.h"
 #include "UserManager.h"
 #include "ImServer.h"
+#include "FriendCroup.h"
 
 void CClientSession::onMessage(CTcpConnection *conn) {
 //    fprintf(stderr, "%s called\n", __func__);
@@ -83,9 +84,37 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
         case msg_type_login:
             onLogin(data);
             break;
-        default:
-            LOGI("recv unkown packet");
-            break;
+        default:{
+            if(!m_bLogin){
+                string response = R"({"code": 2, "msg": "not login, please login first!"})";
+                sendPacket(cmd, m_seq, response);
+                return true;
+            }
+
+            switch (cmd) {
+                case msg_type_getfriendlist:
+                    onGetFriendList(data);
+                    break;
+                case msg_type_finduser:
+                    onFindUser(data);
+                    break;
+//                case msg_type_operatefriend:
+//                    onFriendOperator(data);
+//                    break;
+                case msg_type_userstatuschange:
+                    onUserStateChange(data);
+                    break;
+                case msg_type_updateuserinfo:
+                    onUpdateUserInfo(data);
+                    break;
+                case msg_type_modifypassword:
+                    onModifyPassword(data);
+                    break;
+                default:
+                    LOGI("recv unkown packet");
+                    break;
+            }
+        }
     }
 
     return true;
@@ -133,6 +162,18 @@ void CClientSession::send(const std::string &packet) {
 
 void CClientSession::sendText(const std::string &packet) {
     m_conn->addWriteBuffer(packet);
+}
+
+void CClientSession::sendPacketWithUserId(
+        int32_t cmd, int32_t seq, std::string &data, uint32_t uid) {
+    std::string packet;
+    BinaryStreamWriter writer(&packet);
+    writer.WriteInt32(cmd);
+    writer.WriteInt32(seq);
+    writer.WriteString(data);
+    writer.WriteInt32(uid);
+    writer.Flush();
+    send(packet);
 }
 
 void CClientSession::makeInvalid() {
@@ -220,3 +261,195 @@ void CClientSession::onLogin(std::string &data) {
     sendPacket(msg_type_login, m_seq, response);
 }
 
+void CClientSession::onGetFriendList(std::string &data) {
+    //这个请求没有内容
+    std::string response;
+    Json::Value json;
+    json["code"] = 0;
+    json["msg"] = "ok";
+    for(const auto& friendGroup:m_user->m_friendGroups){
+        Json::Value fgroupInfo;
+        fgroupInfo["teamname"] = friendGroup->getName();
+        for(auto uid:friendGroup->getUserIds()){
+            UserPtr fuser = UserManager::getInstance().getUserByUid(uid);
+            Json::Value userinfo;
+            userinfo["userid"] = fuser->m_userId;
+            userinfo["username"] = fuser->m_userAccount;
+            userinfo["nickname"] = fuser->m_nickName;
+            userinfo["facetype"] = 0;
+            userinfo["customface"] = "";
+            userinfo["gender"] = 1;
+            userinfo["birthday"] = 19900101,
+            userinfo["signature"] = "";
+            userinfo["address"] = "";
+            userinfo["phonenumber"] = fuser->m_userPhoneNum;
+            userinfo["mail"] = "";
+            userinfo["clienttype"] = fuser->m_clientType;
+            userinfo["status"] = fuser->m_onlineType;
+            userinfo["markname"] = "";
+            fgroupInfo["members"].append(userinfo);
+        }
+        json["userinfo"].append(fgroupInfo);
+    }
+
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, json);
+    sendPacket(msg_type_getfriendlist, m_seq, response);
+}
+
+void CClientSession::onFindUser(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+    //type查找类型 0所有， 1查找用户 2查找群
+    //{"type": 1, "username": "zhangyl"}
+    //{ "code": 0, "msg": "ok", "userinfo": [{"userid": 2, "username": "qqq", "nickname": "qqq123", "facetype":0}] }
+    std::string username = value["username"].asString();
+    UserPtr user = UserManager::getInstance().getUserByAccount(username);
+
+    Json::Value json;
+    if(user){
+        json["code"] = 0;
+        json["msg"] = "ok";
+        Json::Value userinfo;
+        userinfo["userid"] = user->m_userId;
+        userinfo["username"] = user->m_userAccount;
+        userinfo["nickname"] = user->m_nickName;
+        userinfo["facetype"] = 0;
+        json["userinfo"].append(userinfo);
+    }else{  //查找失败返回好友列表空就行
+        json["code"] = 0;
+        json["msg"] = "ok";
+        json["userinfo"].append(Json::Value());
+    }
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, json);
+    sendPacket(msg_type_finduser, m_seq, response);
+}
+
+void CClientSession::onFriendOperator(std::string &data) {
+    /*
+    //type为1发出加好友申请 2 收到加好友请求(仅客户端使用) 3应答加好友 4删除好友请求 5应答删除好友
+    //当type=3时，accept是必须字段，0对方拒绝，1对方接受
+    cmd = 1005, seq = 0, {"userid": 9, "type": 1}
+    cmd = 1005, seq = 0, {"userid": 9, "type": 2, "username": "xxx"}
+    cmd = 1005, seq = 0, {"userid": 9, "type": 3, "username": "xxx", "accept": 1}
+
+    //发送
+    cmd = 1005, seq = 0, {"userid": 9, "type": 4}
+    //应答
+    cmd = 1005, seq = 0, {"userid": 9, "type": 5, "username": "xxx"}
+ **/
+//    Json::Reader reader;
+//    Json::Value value;
+//    if(!reader.parse(data, value)){
+//        return;
+//    }
+//
+//    std::string response;
+//    Json::StreamWriterBuilder builder;
+//    response = Json::writeString(builder, json);
+//    sendPacket(msg_type_finduser, m_seq, response);
+}
+
+void CClientSession::onUserStateChange(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+
+    int stateType = value["type"].asInt();
+    int newStatus = value["onlinestatus"].asInt();
+    m_user->m_onlineType = newStatus;
+    Json::Value json;
+    json["type"] = stateType;
+    if(stateType==1){
+        json["onlinestatus"] = newStatus;
+        json["clienttype"] = m_user->m_clientType;
+    }else if(stateType==2){
+        json["onlinestatus"] = 0;
+    }
+
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, json);
+    //将状态改变的消息通知好友的各个客户端
+    auto friends = UserManager::getInstance().getFriendListById(m_user->m_userId);
+    for(auto id:friends){
+        //可能存在多个客户端同时在线
+        auto sessions = CImServer::getInstance().getClientSession(id);
+        for(const auto& session:sessions){
+            session->sendPacketWithUserId(msg_type_userstatuschange, m_seq, response, m_user->m_userId);
+        }
+    }
+
+    sendPacket(msg_type_userstatuschange, m_seq, response);
+}
+
+void CClientSession::onUpdateUserInfo(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+
+    if(value["nickname"].isString())m_user->m_nickName = value["nickname"].asString();
+    if(value["phonenumber"].isString())m_user->m_userPhoneNum = value["phonenumber"].asString();
+    if(value["customface"].isString());
+    if(value["gender"].isInt());
+    if(value["birthday"].isInt());
+    if(value["signature"].isString());
+    if(value["address"].isString());
+    if(value["mail"].isString());
+    //更新用户信息
+    UserManager::getInstance().updateUserInfo(m_user->m_userId);
+
+    //还利用发过来的json对象
+    value["code"] = 0;
+    value["msg"] = "ok";
+    value["userid"] = m_user->m_userId;
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, value);
+
+    sendPacket(msg_type_updateuserinfo, m_seq, response);
+
+    //将状态改变的消息通知好友的各个客户端
+    std::string stateChangeMsg = R"({"type":3})";
+    auto friends = UserManager::getInstance().getFriendListById(m_user->m_userId);
+    for(auto id:friends){
+        //可能存在多个客户端同时在线
+        auto sessions = CImServer::getInstance().getClientSession(id);
+        for(const auto& session:sessions){
+            session->sendPacketWithUserId(msg_type_userstatuschange, m_seq, stateChangeMsg, m_user->m_userId);
+        }
+    }
+}
+
+void CClientSession::onModifyPassword(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+
+    std::string response;
+    std::string oldpass = value["oldpassword"].asString();
+    std::string newpass = value["newpassword"].asString();
+    if(m_user->m_userPassword != oldpass){
+        response = R"({"code":101, "msg":"failed"})";
+    }else {
+        response = R"({"code":0, "msg":"ok"})";
+        m_user->m_userPassword = newpass;
+        UserManager::getInstance().updateUserPassowrd(m_user->m_userId);
+    }
+
+    sendPacket(msg_type_modifypassword, m_seq, response);
+}
