@@ -1,10 +1,14 @@
-user数据存储结构：
+//======================用户======================
 用一个hash键来存储一条数据：
 键=user:id:hash，值={id:1, account:gjk, password:123, name:Hello}
 
-用一个集合键存储当前系统中的所有id的值：
+用一个字符键来存当前最大用户id
+键=user:maxid:str，值=MaxId
+
+用一个集合键存储当前系统中的所有用户id的值：
 键=user:set，值=(id1，id2，....，idN)
 
+//======================群组======================
 用一个集合键来存储一个用户的好友分组id：
 键=user:id:friendgroup:set，值=(gid1, gid2, ...,gidN)
 
@@ -13,6 +17,19 @@ user数据存储结构：
 
 用一个集合键来存储一个好友分组中的用户id：
 键=friendgroup:gid:userids:set，值=(uid1,uid2,...,uidN)
+
+//======================群组======================
+用一个字符键来存当前最大用户id
+键=group:maxid:str，值=MaxId
+
+用一个集合键存储当前系统中的所有群组id的值：
+键=group:gid:set，值=(gid1,gid2, ...., gidN)
+
+用一个hash键来存储一条群组数据
+键=group:gid:hash，值={name:GroupName, ownerid:id}
+
+用一个集合键存储一个群组中的成员id
+键=group:gid:members:set，值=(uid1,uid2,...,uidN)
 =========================================================
 一、用redis存储表单数据的方法：
 假设关系数据库中的user如下所示：

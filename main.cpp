@@ -3,7 +3,7 @@
 #include <iostream>
 #include "ConfigFile.h"
 #include "Logger.h"
-#include "UserManager.h"
+#include "EntityManager.h"
 #include "EventLoop.h"
 #include "ImServer.h"
 
@@ -28,8 +28,8 @@ int main()
 	std::string pass = config.getValue("redispass");
     //初始化用户管理器
     int redisport = atoi(port.c_str());
-    if(!UserManager::getInstance().init(redishost, redisport, pass)){
-        LOGE("UserManager initialize failed.");
+    if(!EntityManager::getInstance().init(redishost, redisport, pass)){
+        LOGE("EntityManager initialize failed.");
         return 0;
     }
 

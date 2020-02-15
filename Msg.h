@@ -33,9 +33,9 @@ enum msg_type
     msg_type_multichat,            //群发消息
     msg_type_kickuser,             //被踢下线
     msg_type_remotedesktop,        //远程桌面
-    msg_type_updateteaminfo,       //更新用户好友分组信息
+    msg_type_updatefriendgroup,    //更新用户好友分组信息
     msg_type_modifyfriendmarkname, //更新好友备注信息
-    msg_type_movefriendtootherteam, //移动好友至
+    msg_type_movefriendgroup, //移动好友至
 };
 
 //在线类型

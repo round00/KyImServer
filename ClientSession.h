@@ -5,7 +5,7 @@
 #ifndef KYIMSERVER_CLIENTSESSION_H
 #define KYIMSERVER_CLIENTSESSION_H
 #include <string>
-#include "UserManager.h"
+#include "EntityManager.h"
 
 class CTcpConnection;
 class CClientSession{
@@ -34,6 +34,10 @@ public:
     void        onUserStateChange(std::string& data);
     void        onUpdateUserInfo(std::string& data);
     void        onModifyPassword(std::string& data);
+    void        onCreateGroup(std::string& data);
+    void        onGetGroupMembers(std::string& data);
+    void        onUpdateFriendGroup(std::string& data);
+    void        onMoveFriendGroup(std::string& data);
     //==========================================
     bool        isLogined(){return m_bLogin;}
     UserPtr     getUser(){return m_user;}

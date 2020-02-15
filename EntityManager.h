@@ -2,8 +2,8 @@
 // Created by gjk on 2020/2/10.
 //
 
-#ifndef KYIMSERVER_USERMANAGER_H
-#define KYIMSERVER_USERMANAGER_H
+#ifndef KYIMSERVER_ENTITYMANAGER_H
+#define KYIMSERVER_ENTITYMANAGER_H
 
 #include <unordered_map>
 #include <string>
@@ -33,18 +33,34 @@ struct User{
 };
 typedef std::shared_ptr<User> UserPtr;
 
-class UserManager : public noncopyable{
+struct Group{
+    Group():m_groupId(0), m_ownerId(0){}
+    Group(uint32_t createUserId, const std::string& groupName);
+
+    uint32_t        m_groupId;
+    uint32_t        m_ownerId;
+    std::string     m_groupName;
+    std::set<uint32_t > m_groupMembers;
+};
+typedef std::shared_ptr<Group> GroupPtr;
+
+//===============================================================
+//用户、群组都看做是实体对象
+class EntityManager : public noncopyable{
 public:
     typedef std::unordered_map<uint32_t , UserPtr> UserMap;
     typedef std::unordered_map<std::string, uint32_t > AccountUidMap;
+    typedef std::unordered_map<uint32_t , GroupPtr> GroupMap;
 
-    static UserManager& getInstance(){
-        static UserManager instance;
+    static EntityManager& getInstance(){
+        static EntityManager instance;
         return instance;
     }
     //初始化UserManage，应该在第一次使用UserManage实例之前就调用这个
     bool        init(const std::string& redishost, int redisport,
             const std::string& redispass);
+
+    //=====================用户=====================
     //添加一个新用户，返回这个用户的uid，0无效
     int         addNewUser(const UserPtr& user);
     UserPtr     getUserByUid(uint32_t uid);
@@ -52,22 +68,35 @@ public:
     bool        updateUserInfo(uint32_t uid);
     bool        updateUserPassowrd(uint32_t uid);
     UserPtr     getUserByAccount(const std::string& account);
-    std::vector<uint32_t> getFriendListById(uint32_t uid);
     //获取好友列表
+    std::vector<uint32_t> getFriendListById(uint32_t uid);
+
+    //=====================群组=====================
+    int         addNewGroup(const GroupPtr& group);
+    GroupPtr    getGroupByGid(uint32_t gid);
+    bool        updateGroupInfo(uint32_t gid);
+    //获取成员列表
+    std::set<uint32_t> getGroupMembers(uint32_t gid);
 
 
 private:
-    UserManager()= default;
-    ~UserManager()= default;
+    EntityManager()= default;
+    ~EntityManager()= default;
 
     bool        loadAllUsers();
+    bool        loadAllGroups();
 
     UserMap             m_users;        //存储所有用户的信息
     AccountUidMap       m_account2Uid;  //存储用户账号->uid的映射，为了实现按account查找
+    uint32_t            m_maxUserId;    //当前最大的用户ID，新添加用户的时候用这个来分配ID
+
+
+    GroupMap            m_groups;       //存储所有群组的信息
+    uint32_t            m_maxGroupId;   //当前最大的群组ID，新添加的群组用这个来分配ID
+
+
     RedisPtr            m_redis;        //redis实例
-    std::set<uint32_t > m_setAllUserId; //所有用户的uid集合
-    uint32_t            m_allUserNumber;//当前总的用户量，新添加用户的时候用这个来分配ID
 };
 
 
-#endif //KYIMSERVER_USERMANAGER_H
+#endif //KYIMSERVER_ENTITYMANAGER_H

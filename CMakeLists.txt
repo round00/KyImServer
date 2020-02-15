@@ -25,7 +25,7 @@ include_directories(thirdparty/)
 set(chatserver_src
 		main.cpp
 		ConfigFile.cpp
-		UserManager.cpp
+		EntityManager.cpp
 
 		EventLoop.cpp
 		TcpServer.cpp

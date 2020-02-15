@@ -9,7 +9,7 @@
 #include "Logger.h"
 #include "ProtocolStream.h"
 #include "jsoncpp/json.h"
-#include "UserManager.h"
+#include "EntityManager.h"
 #include "ImServer.h"
 #include "FriendCroup.h"
 
@@ -110,6 +110,19 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                 case msg_type_modifypassword:
                     onModifyPassword(data);
                     break;
+                case msg_type_creategroup:
+                    onCreateGroup(data);
+                    break;
+                case msg_type_getgroupmembers:
+                    onGetGroupMembers(data);
+                    break;
+//                case msg_type_updatefriendgroup:
+//                    onUpdateFriendGroup(data);
+//                    break;
+//                case msg_type_movefriendgroup:
+//                    onMoveFriendGroup(data);
+                    break;
+
                 default:
                     LOGI("recv unkown packet");
                     break;
@@ -201,7 +214,7 @@ void CClientSession::onRegister(std::string &data) {
     user->m_userPassword = value["password"].asString();
 
     std::string response = R"({"code": 0, "msg": "ok"})";
-    if(UserManager::getInstance().addNewUser(user) == 0){//失败
+    if(EntityManager::getInstance().addNewUser(user) == 0){//失败
         LOGI("User Register failed");
         response = R"({"code": 101, "msg": "failed"})";
     }
@@ -217,7 +230,7 @@ void CClientSession::onLogin(std::string &data) {
     }
     //{"username": "13917043329", "password": "123", "clienttype": 1, "status": 1}
     std::string account = value["username"].asString();
-    m_user = UserManager::getInstance().getUserByAccount(account);
+    m_user = EntityManager::getInstance().getUserByAccount(account);
     std::string response;
     if(!m_user){  //用户不存在
         response = R"({"code":102, "msg":"not registed"})";
@@ -271,7 +284,7 @@ void CClientSession::onGetFriendList(std::string &data) {
         Json::Value fgroupInfo;
         fgroupInfo["teamname"] = friendGroup->getName();
         for(auto uid:friendGroup->getUserIds()){
-            UserPtr fuser = UserManager::getInstance().getUserByUid(uid);
+            UserPtr fuser = EntityManager::getInstance().getUserByUid(uid);
             Json::Value userinfo;
             userinfo["userid"] = fuser->m_userId;
             userinfo["username"] = fuser->m_userAccount;
@@ -307,7 +320,7 @@ void CClientSession::onFindUser(std::string &data) {
     //{"type": 1, "username": "zhangyl"}
     //{ "code": 0, "msg": "ok", "userinfo": [{"userid": 2, "username": "qqq", "nickname": "qqq123", "facetype":0}] }
     std::string username = value["username"].asString();
-    UserPtr user = UserManager::getInstance().getUserByAccount(username);
+    UserPtr user = EntityManager::getInstance().getUserByAccount(username);
 
     Json::Value json;
     if(user){
@@ -380,7 +393,7 @@ void CClientSession::onUserStateChange(std::string &data) {
     Json::StreamWriterBuilder builder;
     response = Json::writeString(builder, json);
     //将状态改变的消息通知好友的各个客户端
-    auto friends = UserManager::getInstance().getFriendListById(m_user->m_userId);
+    auto friends = EntityManager::getInstance().getFriendListById(m_user->m_userId);
     for(auto id:friends){
         //可能存在多个客户端同时在线
         auto sessions = CImServer::getInstance().getClientSession(id);
@@ -408,7 +421,7 @@ void CClientSession::onUpdateUserInfo(std::string &data) {
     if(value["address"].isString());
     if(value["mail"].isString());
     //更新用户信息
-    UserManager::getInstance().updateUserInfo(m_user->m_userId);
+    EntityManager::getInstance().updateUserInfo(m_user->m_userId);
 
     //还利用发过来的json对象
     value["code"] = 0;
@@ -423,7 +436,7 @@ void CClientSession::onUpdateUserInfo(std::string &data) {
 
     //将状态改变的消息通知好友的各个客户端
     std::string stateChangeMsg = R"({"type":3})";
-    auto friends = UserManager::getInstance().getFriendListById(m_user->m_userId);
+    auto friends = EntityManager::getInstance().getFriendListById(m_user->m_userId);
     for(auto id:friends){
         //可能存在多个客户端同时在线
         auto sessions = CImServer::getInstance().getClientSession(id);
@@ -448,8 +461,85 @@ void CClientSession::onModifyPassword(std::string &data) {
     }else {
         response = R"({"code":0, "msg":"ok"})";
         m_user->m_userPassword = newpass;
-        UserManager::getInstance().updateUserPassowrd(m_user->m_userId);
+        EntityManager::getInstance().updateUserPassowrd(m_user->m_userId);
     }
 
     sendPacket(msg_type_modifypassword, m_seq, response);
+}
+
+void CClientSession::onCreateGroup(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+
+    std::string groupName = value["groupname"].asString();
+    GroupPtr group(new Group(m_user->m_userId, groupName));
+    //添加群组
+    uint32_t gid = EntityManager::getInstance().addNewGroup(group);
+    Json::Value res;
+    if(gid==0){
+        res["code"] = 106;
+        res["msg"] = "create group error";
+    }else{
+        res["code"] = 0;
+        res["msg"] = "ok";
+        res["groupid"] = gid;
+        res["groupname"] = group->m_groupName;
+    }
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, value);
+    sendPacket(msg_type_creategroup, m_seq, response);
+}
+
+void CClientSession::onGetGroupMembers(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+    uint32_t gid = value["groupid"].asUInt();
+    auto group = EntityManager::getInstance().getGroupByGid(gid);
+    if(!group){
+        return;
+    }
+    value["code"] = 0;
+    value["msg"] = "ok";
+    for(auto uid:group->m_groupMembers){
+        auto user = EntityManager::getInstance().getUserByUid(uid);
+        if(!user)continue;
+        Json::Value userinfo;
+        userinfo["userid"] = user->m_userId;
+        userinfo["username"] = user->m_userAccount;
+        userinfo["nickname"] = user->m_nickName;
+        userinfo["facetype"] = 0;
+        userinfo["customface"] = "";
+        userinfo["status"] = user->m_onlineType;
+        userinfo["clienttype"] = user->m_clientType;
+
+        value["members"].append(userinfo);
+    }
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, value);
+    sendPacket(msg_type_getgroupmembers, m_seq, response);
+}
+
+void CClientSession::onUpdateFriendGroup(std::string &data) {
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
+//    data(必填，空字符串), int(操作类型：0增 1删 2改), string(新的分组名称), string(旧的分组名)
+
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, value);
+    sendPacket(msg_type_getgroupmembers, m_seq, response);
 }
