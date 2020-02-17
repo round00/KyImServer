@@ -3,3 +3,12 @@
 //
 
 #include "FriendCroup.h"
+
+
+void CFriendGroup::addUsers(const std::unordered_set<int> &uids) {
+    m_userIds.insert(uids.begin(), uids.end());
+}
+
+bool CFriendGroup::existsUser(uint32_t uid) {
+    return m_userIds.find(uid) != m_userIds.end();
+}

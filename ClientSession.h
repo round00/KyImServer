@@ -36,11 +36,15 @@ public:
     void        onModifyPassword(std::string& data);
     void        onCreateGroup(std::string& data);
     void        onGetGroupMembers(std::string& data);
-    void        onUpdateFriendGroup(std::string& data);
-    void        onMoveFriendGroup(std::string& data);
+    void        onUpdateFriendGroup(int op,
+            const std::string& newName, const std::string& oldName);
+    void        onMoveFriendGroup(uint32_t fuid,
+            const std::string& newName, const std::string& oldName);
+
     //==========================================
     bool        isLogined(){return m_bLogin;}
     UserPtr     getUser(){return m_user;}
+    void        makeFriendListPackge(std::string& packge);
 
 
 private:

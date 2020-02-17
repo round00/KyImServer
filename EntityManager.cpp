@@ -56,6 +56,11 @@ bool EntityManager::loadAllUsers() {
     if(m_maxUserId==0){
         return true;
     }
+
+    //获取最大好友分组id
+    auto maxFriendGroupId = m_redis->strGet("friendgroup:maxid:str");
+    m_maxFriendGroupId = atoi(maxFriendGroupId.c_str());
+
     //读取当前所有用户的uid
     std::vector<std::string> userids = m_redis->setGetKeys("user:uid:set");
     for(const string& strId: userids){
@@ -124,6 +129,8 @@ int EntityManager::addNewUser(const UserPtr& user) {
     if(it != m_account2Uid.end()){  //已存在该用户
         return 0;
     }
+    //为该用户创建默认好友分组
+    user->m_friendGroups.emplace_back(new CFriendGroup(++m_maxFriendGroupId));
 
     //添加新用户的话，他还没有uid
     user->m_userId = ++m_maxUserId;
@@ -146,6 +153,9 @@ int EntityManager::addNewUser(const UserPtr& user) {
     if(m_redis->strSet("user:maxid:str", std::to_string(m_maxUserId))){
         return 0;
     }
+
+    addFriendGroup(user->m_userId, CFriendGroup::DEFAULT_NAME);
+
     //更新服务器内存中的数据
     m_users[user->m_userId] = user;
     m_account2Uid[user->m_userAccount] = user->m_userId;
@@ -204,6 +214,163 @@ std::vector<uint32_t> EntityManager::getFriendListById(uint32_t uid) {
     return ret;
 }
 
+bool EntityManager::addFriendGroup(uint32_t uid, const std::string &name) {
+    auto user = getUserByUid(uid);
+    if(!user){
+        return false;
+    }
+    for(const auto &fg : user->m_friendGroups){
+        if(fg->getName() == name){  //存在相同名字的
+            return false;
+        }
+    }
+    user->m_friendGroups.emplace_back(new CFriendGroup(++m_maxFriendGroupId, name));
+
+    //将好友分组数据写到redis中
+    auto strFGroupId = std::to_string(m_maxFriendGroupId);
+    if(!m_redis->setAddKey("user:" + std::to_string(uid) + ":friendgroup:set", strFGroupId)){
+        return false;
+    }
+
+    if(!m_redis->strSet("friendgroup:"+strFGroupId+":name:str", name)){
+        return false;
+    }
+
+    //将最大id写入redis
+    if(!m_redis->strSet("friendgroup:maxid:str", std::to_string(m_maxFriendGroupId))){
+        return false;
+    }
+    return true;
+}
+
+bool EntityManager::delFriendGroup(uint32_t uid, const std::string &name) {
+    if(name==CFriendGroup::DEFAULT_NAME){   //默认分组不能删除
+        return false;
+    }
+    auto user = getUserByUid(uid);
+    if(!user){
+        return false;
+    }
+    auto tar = user->m_friendGroups.end(), def = tar;
+    for(auto it = user->m_friendGroups.begin(); it!=user->m_friendGroups.end(); ++it){
+        if((*it)->getName() == name){  //找到那个分组
+            tar = it;
+        }
+        if((*it)->getName() == CFriendGroup::DEFAULT_NAME){
+            def = it;
+        }
+    }
+    if(tar==user->m_friendGroups.end() ||
+        def==user->m_friendGroups.end()){
+        return false;
+    }
+    //将待删除分组内的用户移动到默认分组
+    if(!copyUsersToOtherFGroup(uid,(*tar)->getId(), (*def)->getId())){
+        return false;
+    }
+    //开始删除
+    auto strId = std::to_string((*tar)->getId());
+    if(!m_redis->deleteKey("friendgroup:"+strId+":name:str")){
+        return false;
+    }
+    if(!m_redis->deleteKey("friendgroup:"+strId+":userids:set")){
+        return false;
+    }
+    if(!m_redis->setDeleteKey("user:"+std::to_string(uid)+":friendgroup:set", strId)){
+        return false;
+    }
+    //从用户好友列表中删除
+    user->m_friendGroups.erase(tar);
+    return true;
+}
+
+bool EntityManager::modifyFriendGroup(uint32_t uid,
+        const std::string &newName, const std::string &oldName) {
+    if(oldName==CFriendGroup::DEFAULT_NAME ||
+        newName==CFriendGroup::DEFAULT_NAME){   //默认分组不能修改
+        return false;
+    }
+    auto user = getUserByUid(uid);
+    if(!user){
+        return false;
+    }
+
+    std::shared_ptr<CFriendGroup> tar;
+    for(auto& fg:user->m_friendGroups){
+        if(fg->getName()==oldName){
+            tar = fg;
+            break;
+        }
+    }
+    if(!tar){   //旧名字不存在
+        return false;
+    }
+    //修改
+    if(!m_redis->strSet("friendgroup:"+std::to_string(tar->getId())+":name:str", newName)){
+        return false;
+    }
+
+    tar->setName(newName);
+    return true;
+}
+
+bool EntityManager::moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
+        uint32_t fromFGroupId, uint32_t toFGroupId) {
+    if(fromFGroupId==toFGroupId){
+        return true;
+    }
+    auto user = getUserByUid(uid);
+    if(!user){
+        return false;
+    }
+
+    std::shared_ptr<CFriendGroup> from,to;
+    for(const auto& fg:user->m_friendGroups){
+        if(fg->getId()==fromFGroupId)from = fg;
+        if(fg->getId()==toFGroupId)to = fg;
+    }
+
+    if(!m_redis->setDeleteKey("friendgroup:" +std::to_string(fromFGroupId)+ ":userids:set",
+                              std::to_string(fuid))){
+        return false;
+    }
+    if(!m_redis->setAddKey("friendgroup:" +std::to_string(toFGroupId)+ ":userids:set",
+                std::to_string(fuid))){
+        return false;
+    }
+
+    from->delUser(fuid);
+    to->addUser(fuid);
+    return true;
+}
+
+bool EntityManager::copyUsersToOtherFGroup(uint32_t uid,
+        uint32_t fromFGroupId, uint32_t toFGroupId) {
+    if(fromFGroupId==toFGroupId){
+        return true;
+    }
+    auto user = getUserByUid(uid);
+    if(!user){
+        return false;
+    }
+    std::shared_ptr<CFriendGroup> from,to;
+    for(const auto& fg:user->m_friendGroups){
+        if(fg->getId()==fromFGroupId)from = fg;
+        if(fg->getId()==toFGroupId)to = fg;
+    }
+
+    std::vector<std::string> uids;
+    for(auto id:from->getUserIds()){
+        uids.push_back(std::to_string(id));
+    }
+
+    if(!m_redis->setAddKeys("friendgroup:" +std::to_string(toFGroupId)+ ":userids:set", uids)){
+        return false;
+    }
+    to->addUsers(from->getUserIds());
+    from->delAllUser();
+    return true;
+}
 
 int EntityManager::addNewGroup(const GroupPtr &group) {
     group->m_groupId = ++m_maxGroupId;

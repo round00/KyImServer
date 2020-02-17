@@ -71,6 +71,14 @@ public:
     //获取好友列表
     std::vector<uint32_t> getFriendListById(uint32_t uid);
 
+    //=====================好友分组=====================
+    bool        addFriendGroup(uint32_t uid, const std::string& name);
+    bool        delFriendGroup(uint32_t uid, const std::string& name);
+    bool        modifyFriendGroup(uint32_t uid,
+            const std::string& newName, const std::string& oldName);
+    bool        moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
+            uint32_t fromFGroupId, uint32_t toFGroupId);
+    bool        copyUsersToOtherFGroup(uint32_t uid, uint32_t fromFGroupId, uint32_t toFGroupId);
     //=====================群组=====================
     int         addNewGroup(const GroupPtr& group);
     GroupPtr    getGroupByGid(uint32_t gid);
@@ -89,7 +97,7 @@ private:
     UserMap             m_users;        //存储所有用户的信息
     AccountUidMap       m_account2Uid;  //存储用户账号->uid的映射，为了实现按account查找
     uint32_t            m_maxUserId;    //当前最大的用户ID，新添加用户的时候用这个来分配ID
-
+    uint32_t            m_maxFriendGroupId; //当前最大的用户ID，新添加分组的时候用这个来分配ID
 
     GroupMap            m_groups;       //存储所有群组的信息
     uint32_t            m_maxGroupId;   //当前最大的群组ID，新添加的群组用这个来分配ID

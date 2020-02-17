@@ -116,13 +116,30 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                 case msg_type_getgroupmembers:
                     onGetGroupMembers(data);
                     break;
-//                case msg_type_updatefriendgroup:
-//                    onUpdateFriendGroup(data);
-//                    break;
-//                case msg_type_movefriendgroup:
-//                    onMoveFriendGroup(data);
+                case msg_type_updatefriendgroup:
+                {
+                    int op;
+                    size_t length;
+                    reader.ReadInt32(op);
+                    std::string newName;
+                    reader.ReadString(&newName, 0, length);
+                    std::string oldName;
+                    reader.ReadString(&oldName, 0, length);
+                    onUpdateFriendGroup(op, newName, oldName);
                     break;
-
+                }
+                case msg_type_movefriendgroup:
+                {
+                    int32_t fuid;
+                    size_t length;
+                    reader.ReadInt32(fuid);
+                    std::string newName;
+                    reader.ReadString(&newName, 0, length);
+                    std::string oldName;
+                    reader.ReadString(&oldName, 0, length);
+                    onMoveFriendGroup(fuid, newName, oldName);
+                    break;
+                }
                 default:
                     LOGI("recv unkown packet");
                     break;
@@ -277,36 +294,7 @@ void CClientSession::onLogin(std::string &data) {
 void CClientSession::onGetFriendList(std::string &data) {
     //这个请求没有内容
     std::string response;
-    Json::Value json;
-    json["code"] = 0;
-    json["msg"] = "ok";
-    for(const auto& friendGroup:m_user->m_friendGroups){
-        Json::Value fgroupInfo;
-        fgroupInfo["teamname"] = friendGroup->getName();
-        for(auto uid:friendGroup->getUserIds()){
-            UserPtr fuser = EntityManager::getInstance().getUserByUid(uid);
-            Json::Value userinfo;
-            userinfo["userid"] = fuser->m_userId;
-            userinfo["username"] = fuser->m_userAccount;
-            userinfo["nickname"] = fuser->m_nickName;
-            userinfo["facetype"] = 0;
-            userinfo["customface"] = "";
-            userinfo["gender"] = 1;
-            userinfo["birthday"] = 19900101,
-            userinfo["signature"] = "";
-            userinfo["address"] = "";
-            userinfo["phonenumber"] = fuser->m_userPhoneNum;
-            userinfo["mail"] = "";
-            userinfo["clienttype"] = fuser->m_clientType;
-            userinfo["status"] = fuser->m_onlineType;
-            userinfo["markname"] = "";
-            fgroupInfo["members"].append(userinfo);
-        }
-        json["userinfo"].append(fgroupInfo);
-    }
-
-    Json::StreamWriterBuilder builder;
-    response = Json::writeString(builder, json);
+    makeFriendListPackge(response);
     sendPacket(msg_type_getfriendlist, m_seq, response);
 }
 
@@ -529,17 +517,72 @@ void CClientSession::onGetGroupMembers(std::string &data) {
     sendPacket(msg_type_getgroupmembers, m_seq, response);
 }
 
-void CClientSession::onUpdateFriendGroup(std::string &data) {
-    Json::Reader reader;
-    Json::Value value;
-    if(!reader.parse(data, value)){
-        return;
+void CClientSession::onUpdateFriendGroup(int op,
+        const std::string &newName, const std::string &oldName) {
+    if(op==0){ //新建好友分组
+        if(!EntityManager::getInstance().addFriendGroup(m_user->m_userId, newName)){
+            return;
+        }
+    }else if(op==1){    //删除好友分组
+        if(!EntityManager::getInstance().delFriendGroup(m_user->m_userId, oldName)){
+            return;
+        }
+    }else if(op==2){    //修改好友分组
+        if(!EntityManager::getInstance().modifyFriendGroup(m_user->m_userId, newName, oldName)){
+            return;
+        }
     }
-//    data(必填，空字符串), int(操作类型：0增 1删 2改), string(新的分组名称), string(旧的分组名)
-
 
     std::string response;
+    makeFriendListPackge(response);
+    sendPacket(msg_type_getfriendlist, m_seq, response);
+}
+
+void CClientSession::onMoveFriendGroup(uint32_t fuid,
+        const std::string &newName, const std::string &oldName) {
+    uint32_t from = 0,to = 0;
+    for(const auto& fg:m_user->m_friendGroups){
+        if(fg->getName()==oldName)from = fg->getId();
+        if(fg->getName()==newName)to = fg->getId();
+    }
+    if(!EntityManager::getInstance().moveUserToOtherFGroup(m_user->m_userId, fuid, from, to)){
+        return;
+    }
+
+    std::string response;
+    makeFriendListPackge(response);
+    sendPacket(msg_type_getfriendlist, m_seq, response);
+}
+
+void CClientSession::makeFriendListPackge(std::string& packge) {
+    Json::Value json;
+    json["code"] = 0;
+    json["msg"] = "ok";
+    for(const auto& friendGroup:m_user->m_friendGroups){
+        Json::Value fgroupInfo;
+        fgroupInfo["teamname"] = friendGroup->getName();
+        for(auto uid:friendGroup->getUserIds()){
+            UserPtr fuser = EntityManager::getInstance().getUserByUid(uid);
+            Json::Value userinfo;
+            userinfo["userid"] = fuser->m_userId;
+            userinfo["username"] = fuser->m_userAccount;
+            userinfo["nickname"] = fuser->m_nickName;
+            userinfo["facetype"] = 0;
+            userinfo["customface"] = "";
+            userinfo["gender"] = 1;
+            userinfo["birthday"] = 19900101,
+                    userinfo["signature"] = "";
+            userinfo["address"] = "";
+            userinfo["phonenumber"] = fuser->m_userPhoneNum;
+            userinfo["mail"] = "";
+            userinfo["clienttype"] = fuser->m_clientType;
+            userinfo["status"] = fuser->m_onlineType;
+            userinfo["markname"] = "";
+            fgroupInfo["members"].append(userinfo);
+        }
+        json["userinfo"].append(fgroupInfo);
+    }
+
     Json::StreamWriterBuilder builder;
-    response = Json::writeString(builder, value);
-    sendPacket(msg_type_getgroupmembers, m_seq, response);
+    packge = Json::writeString(builder, json);
 }
