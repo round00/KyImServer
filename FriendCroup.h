@@ -35,5 +35,4 @@ private:
     std::unordered_set<int>   m_userIds;
 };
 
-const char* CFriendGroup::DEFAULT_NAME = "My Friends";
 #endif //KYIMSERVER_FRIENDCROUP_H

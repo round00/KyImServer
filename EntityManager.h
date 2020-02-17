@@ -36,6 +36,8 @@ typedef std::shared_ptr<User> UserPtr;
 struct Group{
     Group():m_groupId(0), m_ownerId(0){}
     Group(uint32_t createUserId, const std::string& groupName);
+    //群组id从这里开始，这是Flamgingo的规则，暂时先不改它
+    static const uint32_t GROUPID_BOUBDARY = 0x0FFFFFFF;
 
     uint32_t        m_groupId;
     uint32_t        m_ownerId;
@@ -70,10 +72,13 @@ public:
     UserPtr     getUserByAccount(const std::string& account);
     //获取好友列表
     std::vector<uint32_t> getFriendListById(uint32_t uid);
-
+    bool        isFriend(uint32_t userA, uint32_t userB);
+    bool        makeFriendRelation(uint32_t userAid, uint32_t userBid);
+    bool        breakFriendRelation(uint32_t userAid, uint32_t userBid);
     //=====================好友分组=====================
     bool        addFriendGroup(uint32_t uid, const std::string& name);
     bool        delFriendGroup(uint32_t uid, const std::string& name);
+    std::shared_ptr<CFriendGroup> getDefaultFriendGroup(uint32_t uid);
     bool        modifyFriendGroup(uint32_t uid,
             const std::string& newName, const std::string& oldName);
     bool        moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
@@ -83,9 +88,17 @@ public:
     int         addNewGroup(const GroupPtr& group);
     GroupPtr    getGroupByGid(uint32_t gid);
     bool        updateGroupInfo(uint32_t gid);
+    bool        joinGroup(uint32_t gid, uint32_t userId);
+    bool        quitGroup(uint32_t gid, uint32_t userId);
     //获取成员列表
     std::set<uint32_t> getGroupMembers(uint32_t gid);
+    bool        isGroupMember(uint32_t groupId, uint32_t userId);
 
+    //=====================离线消息=====================
+    //msg应该是已经包装好的，可以直接用send发送
+    void        addOfflineMsg(uint32_t uid, const std::string& msg);
+    std::vector<std::string>
+                getOfflineMsgs(uint32_t uid);
 
 private:
     EntityManager()= default;
@@ -102,6 +115,8 @@ private:
     GroupMap            m_groups;       //存储所有群组的信息
     uint32_t            m_maxGroupId;   //当前最大的群组ID，新添加的群组用这个来分配ID
 
+    //存储离线消息
+    std::unordered_map<uint32_t , std::vector<std::string>>   m_offlineMsgs;
 
     RedisPtr            m_redis;        //redis实例
 };

@@ -93,6 +93,10 @@ bool EntityManager::loadAllUsers() {
 bool EntityManager::loadAllGroups() {
     auto maxGroupId = m_redis->strGet("group:maxid:str");
     m_maxGroupId = atoi(maxGroupId.c_str());
+    if(m_maxGroupId==0){
+        m_maxGroupId = Group::GROUPID_BOUBDARY;
+        m_redis->strSet("group:maxid:str", std::to_string(m_maxGroupId));
+    }
 
     //读取当前所有用户的uid
     std::vector<std::string> groupIds = m_redis->setGetKeys("group:gid:set");
@@ -214,6 +218,63 @@ std::vector<uint32_t> EntityManager::getFriendListById(uint32_t uid) {
     return ret;
 }
 
+bool EntityManager::isFriend(uint32_t userA, uint32_t userB) {
+    auto user = getUserByUid(userA);
+    if(!user){
+        return false;
+    }
+    for(const auto& fgroup:user->m_friendGroups){
+        if(fgroup->existsUser(userB)){
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EntityManager::makeFriendRelation(uint32_t userAid, uint32_t userBid) {
+    auto fgroupOfA = getDefaultFriendGroup(userAid);
+    auto fgroupOfB = getDefaultFriendGroup(userBid);
+    if(!fgroupOfA || !fgroupOfB){
+        return false;
+    }
+
+//    friendgroup:gid:userids:set
+    if(!m_redis->setAddKey("friendgroup:"+
+    std::to_string(fgroupOfA->getId())+":userids:set", std::to_string(userBid))){
+        return false;
+    }
+    if(!m_redis->setAddKey("friendgroup:"+
+    std::to_string(fgroupOfB->getId())+":userids:set", std::to_string(userAid))){
+        return false;
+    }
+
+    fgroupOfA->addUser(userBid);
+    fgroupOfB->addUser(userAid);
+    return true;
+}
+
+bool EntityManager::breakFriendRelation(uint32_t userAid, uint32_t userBid) {
+    auto fgroupOfA = getDefaultFriendGroup(userAid);
+    auto fgroupOfB = getDefaultFriendGroup(userBid);
+    if(!fgroupOfA || !fgroupOfB){
+        return false;
+    }
+
+//    friendgroup:gid:userids:set
+    if(!m_redis->setDeleteKey("friendgroup:"+
+                           std::to_string(fgroupOfA->getId())+":userids:set", std::to_string(userBid))){
+        return false;
+    }
+    if(!m_redis->setDeleteKey("friendgroup:"+
+                           std::to_string(fgroupOfB->getId())+":userids:set", std::to_string(userAid))){
+        return false;
+    }
+
+    fgroupOfA->delUser(userBid);
+    fgroupOfB->delUser(userAid);
+    return true;
+}
+
 bool EntityManager::addFriendGroup(uint32_t uid, const std::string &name) {
     auto user = getUserByUid(uid);
     if(!user){
@@ -282,6 +343,19 @@ bool EntityManager::delFriendGroup(uint32_t uid, const std::string &name) {
     //从用户好友列表中删除
     user->m_friendGroups.erase(tar);
     return true;
+}
+
+std::shared_ptr<CFriendGroup> EntityManager::getDefaultFriendGroup(uint32_t uid) {
+    auto user = getUserByUid(uid);
+    if(!user){
+        return nullptr;
+    }
+    for(const auto& fgroup:user->m_friendGroups){
+        if(fgroup->getName()==CFriendGroup::DEFAULT_NAME){
+            return fgroup;
+        }
+    }
+    return nullptr;
 }
 
 bool EntityManager::modifyFriendGroup(uint32_t uid,
@@ -415,10 +489,63 @@ bool EntityManager::updateGroupInfo(uint32_t gid) {
             "group:" + std::to_string(group->m_groupId) + ":hash", infos);
 }
 
+bool EntityManager::joinGroup(uint32_t gid, uint32_t userId) {
+    auto group = getGroupByGid(gid);
+    if(!group){
+        return false;
+    }
+
+    //添加userid到redis中
+    if(!m_redis->setAddKey("group:"+std::to_string(gid)+":members:set",
+            std::to_string(userId))){
+        return false;
+    }
+    group->m_groupMembers.insert(userId);
+    return true;
+}
+
+bool EntityManager::quitGroup(uint32_t gid, uint32_t userId) {
+    auto group = getGroupByGid(gid);
+    if(!group){
+        return false;
+    }
+
+    //添加userid到redis中
+    if(!m_redis->setDeleteKey("group:"+std::to_string(gid)+":members:set",
+                           std::to_string(userId))){
+        return false;
+    }
+    group->m_groupMembers.erase(userId);
+    return true;
+}
+
 std::set<uint32_t> EntityManager::getGroupMembers(uint32_t gid) {
     auto group = getGroupByGid(gid);
     if(!group){
         return std::set<uint32_t>();
     }
     return group->m_groupMembers;
+}
+
+bool EntityManager::isGroupMember(uint32_t groupId, uint32_t userId) {
+    auto group = getGroupByGid(groupId);
+    if(!group){
+        return false;
+    }
+    return group->m_groupMembers.find(userId) != group->m_groupMembers.end();
+}
+
+void EntityManager::addOfflineMsg(uint32_t uid, const std::string &msg) {
+    m_offlineMsgs[uid].push_back(msg);
+}
+
+std::vector<std::string> EntityManager::getOfflineMsgs(uint32_t uid) {
+    std::vector<std::string> msgs;
+    auto it = m_offlineMsgs.find(uid);
+    if(it == m_offlineMsgs.end()){
+        return msgs;
+    }
+    msgs = it->second;
+    m_offlineMsgs.erase(it);
+    return msgs;
 }

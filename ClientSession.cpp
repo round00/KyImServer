@@ -98,9 +98,9 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                 case msg_type_finduser:
                     onFindUser(data);
                     break;
-//                case msg_type_operatefriend:
-//                    onFriendOperator(data);
-//                    break;
+                case msg_type_operatefriend:
+                    onFriendOperator(data);
+                    break;
                 case msg_type_userstatuschange:
                     onUserStateChange(data);
                     break;
@@ -138,6 +138,13 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                     std::string oldName;
                     reader.ReadString(&oldName, 0, length);
                     onMoveFriendGroup(fuid, newName, oldName);
+                    break;
+                }
+                case msg_type_chat:
+                {
+                    int32_t targetId;
+                    reader.ReadInt32(targetId);
+                    onChatMsg(data, targetId);
                     break;
                 }
                 default:
@@ -194,17 +201,6 @@ void CClientSession::sendText(const std::string &packet) {
     m_conn->addWriteBuffer(packet);
 }
 
-void CClientSession::sendPacketWithUserId(
-        int32_t cmd, int32_t seq, std::string &data, uint32_t uid) {
-    std::string packet;
-    BinaryStreamWriter writer(&packet);
-    writer.WriteInt32(cmd);
-    writer.WriteInt32(seq);
-    writer.WriteString(data);
-    writer.WriteInt32(uid);
-    writer.Flush();
-    send(packet);
-}
 
 void CClientSession::makeInvalid() {
     m_user = nullptr;
@@ -289,6 +285,21 @@ void CClientSession::onLogin(std::string &data) {
     }
 
     sendPacket(msg_type_login, m_seq, response);
+
+    //获取离线消息
+    auto offlineMsgs = EntityManager::getInstance().getOfflineMsgs(m_user->m_userId);
+    for(const auto& msg:offlineMsgs){
+        send(msg);
+    }
+
+    //通知好友我上线了
+    auto friends = EntityManager::getInstance().getFriendListById(m_user->m_userId);
+    for(auto friendId : friends){
+        auto sessions = CImServer::getInstance().getClientSession(friendId);
+        for(const auto& session:sessions){
+            session->sendUserStateChangePacket(m_user->m_userId, 1);
+        }
+    }
 }
 
 void CClientSession::onGetFriendList(std::string &data) {
@@ -333,28 +344,64 @@ void CClientSession::onFindUser(std::string &data) {
 }
 
 void CClientSession::onFriendOperator(std::string &data) {
-    /*
-    //type为1发出加好友申请 2 收到加好友请求(仅客户端使用) 3应答加好友 4删除好友请求 5应答删除好友
-    //当type=3时，accept是必须字段，0对方拒绝，1对方接受
-    cmd = 1005, seq = 0, {"userid": 9, "type": 1}
-    cmd = 1005, seq = 0, {"userid": 9, "type": 2, "username": "xxx"}
-    cmd = 1005, seq = 0, {"userid": 9, "type": 3, "username": "xxx", "accept": 1}
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(data, value)){
+        return;
+    }
 
-    //发送
-    cmd = 1005, seq = 0, {"userid": 9, "type": 4}
-    //应答
-    cmd = 1005, seq = 0, {"userid": 9, "type": 5, "username": "xxx"}
- **/
-//    Json::Reader reader;
-//    Json::Value value;
-//    if(!reader.parse(data, value)){
-//        return;
-//    }
-//
-//    std::string response;
-//    Json::StreamWriterBuilder builder;
-//    response = Json::writeString(builder, json);
-//    sendPacket(msg_type_finduser, m_seq, response);
+    Json::Value retJson;
+    std::string response;
+    Json::StreamWriterBuilder builder;
+
+    EntityManager& entityManager = EntityManager::getInstance();
+    int opType = value["type"].asInt();
+    uint32_t targetId = value["type"].asUInt();
+
+    if(opType==1)   //添加
+    {
+        if(targetId<Group::GROUPID_BOUBDARY){ //好友
+            if(!entityManager.isFriend(targetId, m_user->m_userId)){
+                retJson["userid"] = m_user->m_userId;
+                retJson["type"] = 2;
+                retJson["username"] = m_user->m_nickName;
+                response = Json::writeString(builder, retJson);
+
+                auto sessions = CImServer::getInstance().getClientSession(targetId);
+                if(sessions.empty()){
+                    EntityManager::getInstance().addOfflineMsg(targetId, response);
+                }else{
+                    for(const auto& session : sessions){
+                        session->sendPacket(msg_type_operatefriend, m_seq, response);
+                    }
+                }
+            }
+        }else{  //群组
+            if(!entityManager.isGroupMember(targetId, m_user->m_userId)){
+                //加群直接同意
+                acceptJoinGroup(targetId);
+            }
+        }
+    }
+    else if(opType==2){    //仅客户端使用
+    }
+    else if(opType==3)  //应答添加
+    {
+        int accept = value["accept"].asInt();
+        if(targetId<Group::GROUPID_BOUBDARY){
+            answerMakeFriend(targetId, accept);
+        }
+    }
+    else if(opType==4)  //删除
+    {
+        if(targetId<Group::GROUPID_BOUBDARY){
+            deleteFriend(targetId);
+        }else{
+            quitGroup(targetId);
+        }
+    }
+    else if(opType==5){    //应答删除近客户端使用
+    }
 }
 
 void CClientSession::onUserStateChange(std::string &data) {
@@ -364,33 +411,22 @@ void CClientSession::onUserStateChange(std::string &data) {
         return;
     }
 
-    int stateType = value["type"].asInt();
+//    int stateType = value["type"].asInt();
     int newStatus = value["onlinestatus"].asInt();
     m_user->m_onlineType = newStatus;
-    Json::Value json;
-    json["type"] = stateType;
-    if(stateType==1){
-        json["onlinestatus"] = newStatus;
-        json["clienttype"] = m_user->m_clientType;
-    }else if(stateType==2){
-        json["onlinestatus"] = 0;
-    }
 
 
-    std::string response;
-    Json::StreamWriterBuilder builder;
-    response = Json::writeString(builder, json);
     //将状态改变的消息通知好友的各个客户端
     auto friends = EntityManager::getInstance().getFriendListById(m_user->m_userId);
     for(auto id:friends){
         //可能存在多个客户端同时在线
         auto sessions = CImServer::getInstance().getClientSession(id);
         for(const auto& session:sessions){
-            session->sendPacketWithUserId(msg_type_userstatuschange, m_seq, response, m_user->m_userId);
+            session->sendUserStateChangePacket(m_user->m_userId, 1);
         }
     }
 
-    sendPacket(msg_type_userstatuschange, m_seq, response);
+    sendUserStateChangePacket(m_user->m_userId, 1);
 }
 
 void CClientSession::onUpdateUserInfo(std::string &data) {
@@ -423,13 +459,12 @@ void CClientSession::onUpdateUserInfo(std::string &data) {
     sendPacket(msg_type_updateuserinfo, m_seq, response);
 
     //将状态改变的消息通知好友的各个客户端
-    std::string stateChangeMsg = R"({"type":3})";
     auto friends = EntityManager::getInstance().getFriendListById(m_user->m_userId);
     for(auto id:friends){
         //可能存在多个客户端同时在线
         auto sessions = CImServer::getInstance().getClientSession(id);
         for(const auto& session:sessions){
-            session->sendPacketWithUserId(msg_type_userstatuschange, m_seq, stateChangeMsg, m_user->m_userId);
+            session->sendUserStateChangePacket(m_user->m_userId, 3);
         }
     }
 }
@@ -554,6 +589,48 @@ void CClientSession::onMoveFriendGroup(uint32_t fuid,
     sendPacket(msg_type_getfriendlist, m_seq, response);
 }
 
+void CClientSession::onChatMsg(std::string &data, uint32_t targetId) {
+
+    std::string msg;
+    BinaryStreamWriter writeStream(&msg);
+    writeStream.WriteInt32(msg_type_chat);
+    writeStream.WriteInt32(m_seq);
+    writeStream.WriteString(data);
+    //消息发送者
+    writeStream.WriteInt32(m_user->m_userId);
+    //消息接受者
+    writeStream.WriteInt32(targetId);
+    writeStream.Flush();
+
+    if(targetId<Group::GROUPID_BOUBDARY){   //单聊
+        auto sessions = CImServer::getInstance().getClientSession(targetId);
+        if(sessions.empty()){   //不在线，存为离线消息
+            EntityManager::getInstance().addOfflineMsg(targetId, msg);
+        }else{
+            for(auto& session:sessions){
+                if(session->m_bLogin){
+                    session->send(msg);
+                }
+            }
+        }
+
+    }else{  //群聊
+        auto members = EntityManager::getInstance().getGroupMembers(targetId);
+        for(auto member:members){
+            auto sessions = CImServer::getInstance().getClientSession(member);
+            if(sessions.empty()){ //不在线，存为离线消息
+                EntityManager::getInstance().addOfflineMsg(member, msg);
+            }else{
+                for(auto& session:sessions){
+                    if(session->m_bLogin){
+                        session->send(msg);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void CClientSession::makeFriendListPackge(std::string& packge) {
     Json::Value json;
     json["code"] = 0;
@@ -586,3 +663,160 @@ void CClientSession::makeFriendListPackge(std::string& packge) {
     Json::StreamWriterBuilder builder;
     packge = Json::writeString(builder, json);
 }
+
+void CClientSession::sendUserStateChangePacket(uint32_t userId, int stateType) {
+    Json::Value json;
+    json["type"] = stateType;
+    if(stateType==1){
+        UserPtr user = EntityManager::getInstance().getUserByUid(userId);
+        json["onlinestatus"] = user->m_onlineType;
+        json["clienttype"] = user->m_clientType;
+    }else if(stateType==2){
+        json["onlinestatus"] = 0;
+    }
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, json);
+
+    std::string packet;
+    BinaryStreamWriter writeStream(&packet);
+    writeStream.WriteInt32(msg_type_userstatuschange);
+    writeStream.WriteInt32(m_seq);
+    writeStream.WriteString(response);
+    writeStream.WriteInt32(userId);
+    writeStream.Flush();
+
+    send(packet);
+}
+
+void CClientSession::acceptJoinGroup(uint32_t groupId) {
+    auto group = EntityManager::getInstance().getGroupByGid(groupId);
+    if(!group){
+        return;
+    }
+
+    if(!EntityManager::getInstance().joinGroup(groupId, m_user->m_userId)){
+        return;
+    }
+
+    Json::Value retJson;
+    retJson["userid"] = groupId;
+    retJson["type"] = 3;    //添加应答
+    retJson["username"] = group->m_groupName;
+    retJson["accept"] = 3;  //不知道为什么是3
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, retJson);
+    sendPacket(msg_type_operatefriend, m_seq, response);
+
+    //通知群组成员
+    auto gmembers = EntityManager::getInstance().getGroupMembers(groupId);
+    for(auto member:gmembers){
+        auto sessions = CImServer::getInstance().getClientSession(member);
+        for(const auto& session:sessions){
+            session->sendUserStateChangePacket(groupId, 3);
+        }
+    }
+}
+
+void CClientSession::quitGroup(uint32_t groupId) {
+    if(!EntityManager::getInstance().quitGroup(groupId, m_user->m_userId)){
+        return;
+    }
+    auto group = EntityManager::getInstance().getGroupByGid(groupId);
+    if(!group){
+        return;
+    }
+    //发消息给主动退群的用户
+    Json::Value retJson;
+    retJson["userid"] = groupId;
+    retJson["type"] = 5;
+    retJson["username"] = group->m_groupName;
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, retJson);
+    sendPacket(msg_type_operatefriend, m_seq, response);
+
+    //发送消息给群成员
+    auto gmembers = EntityManager::getInstance().getGroupMembers(groupId);
+    for(auto member:gmembers){
+        auto sessions = CImServer::getInstance().getClientSession(member);
+        for(const auto& session:sessions){
+            session->sendUserStateChangePacket(groupId, 3);
+        }
+    }
+}
+
+void CClientSession::answerMakeFriend(uint32_t friendId, int accept) {
+    auto user = EntityManager::getInstance().getUserByUid(friendId);
+    if(!user){
+        return;
+    }
+
+    //进行添加好友的操作
+    if(accept==1){
+        EntityManager::getInstance().makeFriendRelation(m_user->m_userId, friendId);
+    }
+
+    Json::Value retJson;
+    //回答自己
+    retJson["userid"] = friendId;
+    retJson["type"] = 3;
+    retJson["username"] = user->m_nickName;
+    retJson["accept"] = accept;
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, retJson);
+    sendPacket(msg_type_operatefriend, m_seq, response);
+
+    //回答对方
+    retJson["username"] = m_user->m_nickName;
+    retJson["userid"] = m_user->m_userId;
+    response = Json::writeString(builder, retJson);
+    auto sessions = CImServer::getInstance().getClientSession(friendId);
+    if(sessions.empty()){
+        EntityManager::getInstance().addOfflineMsg(friendId, response);
+    }else{
+        for(const auto&session:sessions){
+            session->sendPacket(msg_type_operatefriend, m_seq, response);
+        }
+    }
+
+
+}
+
+void CClientSession::deleteFriend(uint32_t friendId) {
+    auto user = EntityManager::getInstance().getUserByUid(friendId);
+    if(!user){
+        return;
+    }
+
+    if(EntityManager::getInstance().breakFriendRelation(m_user->m_userId, friendId)){
+        return;
+    }
+
+    Json::Value retJson;
+    //发送给主动删除的一方
+    retJson["userid"] = friendId;
+    retJson["type"] = 5;
+    retJson["username"] = user->m_nickName;
+
+    std::string response;
+    Json::StreamWriterBuilder builder;
+    response = Json::writeString(builder, retJson);
+    sendPacket(msg_type_operatefriend, m_seq, response);
+
+    //回答对方
+    retJson["username"] = m_user->m_nickName;
+    retJson["userid"] = m_user->m_userId;
+    response = Json::writeString(builder, retJson);
+    auto sessions = CImServer::getInstance().getClientSession(friendId);
+    for(const auto&session:sessions){
+        session->sendPacket(msg_type_operatefriend, m_seq, response);
+    }
+}
+
+

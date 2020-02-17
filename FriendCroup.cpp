@@ -4,7 +4,7 @@
 
 #include "FriendCroup.h"
 
-
+const char* CFriendGroup::DEFAULT_NAME = "My Friends";
 void CFriendGroup::addUsers(const std::unordered_set<int> &uids) {
     m_userIds.insert(uids.begin(), uids.end());
 }

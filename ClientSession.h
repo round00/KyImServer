@@ -20,7 +20,6 @@ public:
     void        sendPacket(int32_t cmd, int32_t seq, const char* data, size_t dataLen);
     void        send(const std::string& packet);
     void        sendText(const std::string& packet);
-    void        sendPacketWithUserId(int32_t cmd, int32_t seq, std::string& data, uint32_t uid);
     //使当前Session失效
     void        makeInvalid();
 
@@ -40,12 +39,16 @@ public:
             const std::string& newName, const std::string& oldName);
     void        onMoveFriendGroup(uint32_t fuid,
             const std::string& newName, const std::string& oldName);
-
+    void        onChatMsg(std::string& data, uint32_t targetId);
     //==========================================
     bool        isLogined(){return m_bLogin;}
     UserPtr     getUser(){return m_user;}
     void        makeFriendListPackge(std::string& packge);
-
+    void        sendUserStateChangePacket(uint32_t userId, int stateType);
+    void        acceptJoinGroup(uint32_t groupId);
+    void        quitGroup(uint32_t groupId);
+    void        answerMakeFriend(uint32_t friendId, int accept);
+    void        deleteFriend(uint32_t friendId);
 
 private:
     CTcpConnection*     m_conn;
