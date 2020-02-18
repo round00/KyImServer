@@ -6,6 +6,7 @@
 #define KYIMSERVER_ENTITYMANAGER_H
 
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <set>
 #include <memory>
@@ -30,6 +31,9 @@ struct User{
     //用户好友列表
     std::vector<std::shared_ptr<CFriendGroup>>
                     m_friendGroups;
+    //用户所在群组集合
+    std::unordered_set<uint32_t>
+                    m_groups;
 };
 typedef std::shared_ptr<User> UserPtr;
 
@@ -75,6 +79,7 @@ public:
     bool        isFriend(uint32_t userA, uint32_t userB);
     bool        makeFriendRelation(uint32_t userAid, uint32_t userBid);
     bool        breakFriendRelation(uint32_t userAid, uint32_t userBid);
+
     //=====================好友分组=====================
     bool        addFriendGroup(uint32_t uid, const std::string& name);
     bool        delFriendGroup(uint32_t uid, const std::string& name);
@@ -84,6 +89,7 @@ public:
     bool        moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
             uint32_t fromFGroupId, uint32_t toFGroupId);
     bool        copyUsersToOtherFGroup(uint32_t uid, uint32_t fromFGroupId, uint32_t toFGroupId);
+
     //=====================群组=====================
     int         addNewGroup(const GroupPtr& group);
     GroupPtr    getGroupByGid(uint32_t gid);

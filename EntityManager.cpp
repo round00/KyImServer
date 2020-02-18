@@ -53,9 +53,6 @@ bool EntityManager::loadAllUsers() {
     //先获取最大用户ID
     auto maxUserId = m_redis->strGet("user:maxid:str");
     m_maxUserId = atoi(maxUserId.c_str());
-    if(m_maxUserId==0){
-        return true;
-    }
 
     //获取最大好友分组id
     auto maxFriendGroupId = m_redis->strGet("friendgroup:maxid:str");
@@ -70,7 +67,7 @@ bool EntityManager::loadAllUsers() {
         UserPtr user(new User(userInfo));
 
         //获取指定用户的好友分组的id
-        auto fgids = m_redis->setGetKeys("user:"+ strId + "friendgroup:set");
+        auto fgids = m_redis->setGetKeys("user:"+ strId + ":friendgroup:set");
         for(const auto& fgid:fgids){    //添加好友列表信息
             auto fgname = m_redis->strGet("friendgroup:"+ fgid +":name:str");
             uint32_t nFgid = atoi(fgid.c_str());
@@ -80,6 +77,12 @@ bool EntityManager::loadAllUsers() {
                 setUid.insert(atoi(sUid.c_str()));
             }
             user->m_friendGroups.emplace_back(new CFriendGroup(nFgid, fgname, setUid));
+        }
+
+        //获取指定用户的所在群组id
+        auto gids = m_redis->setGetKeys("user:"+ strId + ":groups:set");
+        for(auto gid:gids){
+            user->m_groups.insert(atoi(gid.c_str()));
         }
 
         //将数据保存起来
@@ -98,7 +101,7 @@ bool EntityManager::loadAllGroups() {
         m_redis->strSet("group:maxid:str", std::to_string(m_maxGroupId));
     }
 
-    //读取当前所有用户的uid
+    //读取当前所有群组的uid
     std::vector<std::string> groupIds = m_redis->setGetKeys("group:gid:set");
     for(const string& strId: groupIds){
         //获取指定gid的群组信息
@@ -112,7 +115,7 @@ bool EntityManager::loadAllGroups() {
         }
 
         //获取群组成员列表
-        auto members = m_redis->setGetKeys("group:"+ strId + "members:set");
+        auto members = m_redis->setGetKeys("group:"+ strId + ":members:set");
         for(const auto& member:members){    //添加好友列表信息
             uint32_t uid = atoi(member.c_str());
             group->m_groupMembers.insert(uid);
@@ -133,8 +136,6 @@ int EntityManager::addNewUser(const UserPtr& user) {
     if(it != m_account2Uid.end()){  //已存在该用户
         return 0;
     }
-    //为该用户创建默认好友分组
-    user->m_friendGroups.emplace_back(new CFriendGroup(++m_maxFriendGroupId));
 
     //添加新用户的话，他还没有uid
     user->m_userId = ++m_maxUserId;
@@ -154,15 +155,16 @@ int EntityManager::addNewUser(const UserPtr& user) {
         return 0;
     }
     //将最大id写入redis
-    if(m_redis->strSet("user:maxid:str", std::to_string(m_maxUserId))){
+    if(!m_redis->strSet("user:maxid:str", std::to_string(m_maxUserId))){
         return 0;
     }
-
-    addFriendGroup(user->m_userId, CFriendGroup::DEFAULT_NAME);
 
     //更新服务器内存中的数据
     m_users[user->m_userId] = user;
     m_account2Uid[user->m_userAccount] = user->m_userId;
+
+    //为用户添加默认好友分组
+    addFriendGroup(user->m_userId, CFriendGroup::DEFAULT_NAME);
     LOGI("Add new user success, his uid is %d", user->m_userId);
     return user->m_userId;
 }
@@ -250,6 +252,7 @@ bool EntityManager::makeFriendRelation(uint32_t userAid, uint32_t userBid) {
 
     fgroupOfA->addUser(userBid);
     fgroupOfB->addUser(userAid);
+    LOGD("User %d and %d makeup friend relation", userAid, userBid);
     return true;
 }
 
@@ -301,6 +304,8 @@ bool EntityManager::addFriendGroup(uint32_t uid, const std::string &name) {
     if(!m_redis->strSet("friendgroup:maxid:str", std::to_string(m_maxFriendGroupId))){
         return false;
     }
+    LOGD("User %s(%d) add friend group '%s'(%d)", user->m_userAccount.c_str(),
+            uid, name.c_str(), m_maxFriendGroupId);
     return true;
 }
 
@@ -448,9 +453,10 @@ bool EntityManager::copyUsersToOtherFGroup(uint32_t uid,
 
 int EntityManager::addNewGroup(const GroupPtr &group) {
     group->m_groupId = ++m_maxGroupId;
+
     //将群组信息写到redis中
     std::vector<std::pair<string, string>> infos;
-    infos.emplace_back(std::make_pair("ownerid", std::to_string(group->m_groupId)));
+    infos.emplace_back(std::make_pair("ownerid", std::to_string(group->m_ownerId)));
     infos.emplace_back(std::make_pair("name", group->m_groupName));
     if(!m_redis->hashSetKeyValues(
             "group:" + std::to_string(group->m_groupId) + ":hash", infos)){
@@ -464,6 +470,10 @@ int EntityManager::addNewGroup(const GroupPtr &group) {
     }
 
     m_groups[group->m_groupId] = group;
+    joinGroup(group->m_groupId, group->m_ownerId);
+
+    LOGD("Create group success name=%s, owner=%d, newGroupId=%d",
+         group->m_groupName.c_str(), group->m_ownerId, group->m_groupId);
     return group->m_groupId;
 }
 
@@ -494,13 +504,22 @@ bool EntityManager::joinGroup(uint32_t gid, uint32_t userId) {
     if(!group){
         return false;
     }
+    auto user = getUserByUid(userId);
+    if(!user){
+        return false;
+    }
 
     //添加userid到redis中
     if(!m_redis->setAddKey("group:"+std::to_string(gid)+":members:set",
             std::to_string(userId))){
         return false;
     }
+    if(!m_redis->setAddKey("user:"+std::to_string(userId)+":groups:set",
+            std::to_string(gid))){
+        return false;
+    }
     group->m_groupMembers.insert(userId);
+    user->m_groups.insert(gid);
     return true;
 }
 

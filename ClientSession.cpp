@@ -24,8 +24,8 @@ void CClientSession::onMessage(CTcpConnection *conn) {
         //提取包头
         chat_msg_header header;
         conn->retriveBuffer((char*)&header, sizeof(header));
-        fprintf(stderr, "compress=%d, ori length=%d, com length=%d\n",
-                header.compressflag, header.originsize, header.compresssize);
+//        fprintf(stderr, "compress=%d, ori length=%d, com length=%d\n",
+//                header.compressflag, header.originsize, header.compresssize);
         if(header.originsize<=0 || header.originsize>=MAX_PACKET_SIZE ||
             header.compresssize<=0 || header.compresssize>=MAX_PACKET_SIZE){
             LOGE("packet size is invalid");
@@ -72,7 +72,10 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
         return false;
     }
 
-    LOGD("Recv Packet cmd=%d, seq=%d", cmd, m_seq);
+    if(cmd != msg_type_heartbeat){
+        LOGD("Recv Packet cmd=%d, seq=%d", cmd, m_seq);
+    }
+
 
     switch (cmd){
         case msg_type_heartbeat:
@@ -230,6 +233,8 @@ void CClientSession::onRegister(std::string &data) {
     if(EntityManager::getInstance().addNewUser(user) == 0){//失败
         LOGI("User Register failed");
         response = R"({"code": 101, "msg": "failed"})";
+    }else{
+        LOGI("User registed success, account=%s", user->m_userAccount.c_str());
     }
 
     sendPacket(msg_type_register, m_seq, response);
@@ -247,9 +252,11 @@ void CClientSession::onLogin(std::string &data) {
     std::string response;
     if(!m_user){  //用户不存在
         response = R"({"code":102, "msg":"not registed"})";
+        LOGD("Account %s try to login, but not registed", account.c_str());
     }else{
         if(m_user->m_userPassword != value["password"].asString()){//密码错误
             response = R"({"code":103, "msg":"incorrect password"})";
+            LOGD("Account %s try to login, but password incorrect", account.c_str());
         }else {
             uint8_t clientType = value["clienttype"].asInt();
             auto session = CImServer::getInstance().getClientSession(m_user->m_userId, clientType);
@@ -280,12 +287,14 @@ void CClientSession::onLogin(std::string &data) {
             json["mail"] = "";
             Json::StreamWriterBuilder builder;
             response = Json::writeString(builder, json);
-            LOGD("User %s(%d) login success", m_user->m_nickName.c_str(), m_user->m_userId);
+            LOGD("User %s(%d) login success", m_user->m_userAccount.c_str(), m_user->m_userId);
         }
     }
 
     sendPacket(msg_type_login, m_seq, response);
-
+    if(!m_bLogin){  //未登录成功
+        return;
+    }
     //获取离线消息
     auto offlineMsgs = EntityManager::getInstance().getOfflineMsgs(m_user->m_userId);
     for(const auto& msg:offlineMsgs){
@@ -304,6 +313,7 @@ void CClientSession::onLogin(std::string &data) {
 
 void CClientSession::onGetFriendList(std::string &data) {
     //这个请求没有内容
+    LOGD("User '%s' get friend list", m_user->m_userAccount.c_str());
     std::string response;
     makeFriendListPackge(response);
     sendPacket(msg_type_getfriendlist, m_seq, response);
@@ -315,25 +325,41 @@ void CClientSession::onFindUser(std::string &data) {
     if(!reader.parse(data, value)){
         return;
     }
-    //type查找类型 0所有， 1查找用户 2查找群
-    //{"type": 1, "username": "zhangyl"}
-    //{ "code": 0, "msg": "ok", "userinfo": [{"userid": 2, "username": "qqq", "nickname": "qqq123", "facetype":0}] }
-    std::string username = value["username"].asString();
-    UserPtr user = EntityManager::getInstance().getUserByAccount(username);
 
+    int type = value["type"].asInt();
     Json::Value json;
-    if(user){
-        json["code"] = 0;
-        json["msg"] = "ok";
-        Json::Value userinfo;
-        userinfo["userid"] = user->m_userId;
-        userinfo["username"] = user->m_userAccount;
-        userinfo["nickname"] = user->m_nickName;
-        userinfo["facetype"] = 0;
-        json["userinfo"].append(userinfo);
-    }else{  //查找失败返回好友列表空就行
-        json["code"] = 0;
-        json["msg"] = "ok";
+    json["code"] = 0;
+    json["msg"] = "ok";
+
+    bool bFind = false;
+    if(type==1){    //查找用户
+        std::string username = value["username"].asString();
+        UserPtr user = EntityManager::getInstance().getUserByAccount(username);
+        if(user){
+            bFind = true;
+            Json::Value userinfo;
+            userinfo["userid"] = user->m_userId;
+            userinfo["username"] = user->m_userAccount;
+            userinfo["nickname"] = user->m_nickName;
+            json["userinfo"].append(userinfo);
+        }
+        LOGD("User %s find user %s ", m_user->m_userAccount.c_str(), username.c_str());
+
+    }else if(type==2){  //查找群
+        uint32_t gid = atoi(value["username"].asCString());
+        GroupPtr group = EntityManager::getInstance().getGroupByGid(gid);
+        if(group){
+            bFind = true;
+            Json::Value userinfo;
+            userinfo["userid"] = group->m_groupId;
+            userinfo["username"] = std::to_string(group->m_groupId);
+            userinfo["nickname"] = group->m_groupName;
+            json["userinfo"].append(userinfo);
+        }
+        LOGD("User %s find group %d", m_user->m_userAccount.c_str(), gid);
+    }
+
+    if(!bFind){  //查找失败返回好友列表空就行
         json["userinfo"].append(Json::Value());
     }
 
@@ -356,7 +382,7 @@ void CClientSession::onFriendOperator(std::string &data) {
 
     EntityManager& entityManager = EntityManager::getInstance();
     int opType = value["type"].asInt();
-    uint32_t targetId = value["type"].asUInt();
+    uint32_t targetId = value["userid"].asUInt();
 
     if(opType==1)   //添加
     {
@@ -514,8 +540,19 @@ void CClientSession::onCreateGroup(std::string &data) {
 
     std::string response;
     Json::StreamWriterBuilder builder;
-    response = Json::writeString(builder, value);
+    response = Json::writeString(builder, res);
     sendPacket(msg_type_creategroup, m_seq, response);
+
+    //创建成功，发送给创建者加入群消息
+    if(gid!=0){
+        res.clear();
+        res["userid"] = gid;
+        res["type"] = 3;
+        res["username"] = groupName.c_str();
+        res["accept"] = 1;
+        response = Json::writeString(builder, res);
+        sendPacket(msg_type_operatefriend, m_seq, response);
+    }
 }
 
 void CClientSession::onGetGroupMembers(std::string &data) {
@@ -658,6 +695,14 @@ void CClientSession::makeFriendListPackge(std::string& packge) {
             fgroupInfo["members"].append(userinfo);
         }
         json["userinfo"].append(fgroupInfo);
+    }
+    //客户端的设计是用户和群组一块返回
+    for(auto gid:m_user->m_groups){
+        Json::Value groupinfo;
+        auto group = EntityManager::getInstance().getGroupByGid(gid);
+        groupinfo["userid"] = group->m_groupId;
+        groupinfo["nickname"] = group->m_groupName;
+        json["userinfo"][0]["members"].append(groupinfo);
     }
 
     Json::StreamWriterBuilder builder;

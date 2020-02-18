@@ -8,6 +8,9 @@
 用一个集合键存储当前系统中的所有用户id的值：
 键=user:set，值=(id1，id2，....，idN)
 
+用一个集合键来存储某用户的所在群组id
+键=user:id:groups:set，值=(gid1,gid2,...,gidN)
+
 //======================好友分组======================
 用一个字符键来存当前最大分组ID
 键=friendgroup:maxid:str，值=MaxId
