@@ -71,7 +71,7 @@ bool CRedis::deleteKey(const string &key) {
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
-    return rep->integer==1;
+    return rep->integer>=0;
 }
 
 //=========================字符串相关命令=========================
@@ -261,6 +261,8 @@ bool CRedis::hashSetKeyValues(const string &hash,
         const std::vector<std::pair<string, string>>& keyvals) {
     string cmd = "hmset " + hash;
     for(const auto& p:keyvals){
+        if(p.first.empty() || p.second.empty())
+            continue;
         cmd += " " + p.first + " " + p.second;
     }
     RedisReply rep = sendACommand(cmd);
@@ -533,6 +535,7 @@ int CRedis::zsetAddItems(const string &zset,
         const std::vector<std::pair<double, string>>& items) {
     string cmd = "zadd " + zset;
     for(const auto& p:items){
+        if(p.second.empty())continue;
         cmd += " " + std::to_string(p.first) + " " + p.second;
     }
     RedisReply rep = sendACommand(cmd);

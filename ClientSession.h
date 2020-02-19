@@ -40,6 +40,7 @@ public:
     void        onMoveFriendGroup(uint32_t fuid,
             const std::string& newName, const std::string& oldName);
     void        onChatMsg(std::string& data, uint32_t targetId);
+    void        onMultiChatMsg(std::string& data, std::string& targets);
     //==========================================
     bool        isLogined(){return m_bLogin;}
     UserPtr     getUser(){return m_user;}

@@ -7,18 +7,39 @@
 #include "Logger.h"
 #include "FriendCroup.h"
 
+User::User():m_userId(0),m_onlineType(0),m_clientType(0),
+m_gender(0), m_faceType(0), m_birthday(19920408)
+{
+
+}
+
 User::User(const std::vector<std::pair<std::string, std::string>>& userinfo):
 User(){
     for(const auto& info : userinfo){
         if(info.first=="uid"){
             m_userId = atoi(info.second.c_str());
+        }else if(info.first=="gender"){
+            m_gender = atoi(info.second.c_str());
+        }else if(info.first=="facetype"){
+            m_faceType = atoi(info.second.c_str());
+        }else if(info.first=="birthday"){
+            m_birthday = atoi(info.second.c_str());
         }else if(info.first=="nickname"){
             m_nickName = info.second;
         }else if(info.first=="userpass"){
             m_userPassword = info.second;
         }else if(info.first=="account"){
             m_userAccount = info.second;
-            m_userPhoneNum = info.second;
+        }else if(info.first=="phonenumber"){
+            m_userPhoneNumber = info.second;
+        }else if(info.first=="customface"){
+            m_customFace = info.second;
+        }else if(info.first=="signature"){
+            m_signature = info.second;
+        }else if(info.first=="address"){
+            m_address = info.second;
+        }else if(info.first=="mail"){
+            m_mail = info.second;
         }
     }
 }
@@ -142,10 +163,18 @@ int EntityManager::addNewUser(const UserPtr& user) {
     //先构造要写入redis的数据
     std::vector<std::pair<string, string>> infos;
     infos.emplace_back(std::make_pair("uid", std::to_string(user->m_userId)));
+    infos.emplace_back(std::make_pair("gender",std::to_string(user->m_gender)));
+    infos.emplace_back(std::make_pair("facetype",std::to_string(user->m_faceType)));
+    infos.emplace_back(std::make_pair("birthday",std::to_string(user->m_birthday)));
     infos.emplace_back(std::make_pair("nickname", user->m_nickName));
     infos.emplace_back(std::make_pair("userpass", user->m_userPassword));
     infos.emplace_back(std::make_pair("account", user->m_userAccount));
-    infos.emplace_back(std::make_pair("phonenumber", user->m_userPhoneNum));
+    infos.emplace_back(std::make_pair("phonenumber", user->m_userPhoneNumber));
+    infos.emplace_back(std::make_pair("customface",user->m_customFace));
+    infos.emplace_back(std::make_pair("signature",user->m_signature));
+    infos.emplace_back(std::make_pair("address",user->m_address));
+    infos.emplace_back(std::make_pair("mail",user->m_mail));
+
     //将用户信息写入redis
     if(!m_redis->hashSetKeyValues("user:"+std::to_string(user->m_userId)+":hash", infos)){
         return 0;
@@ -181,16 +210,23 @@ bool EntityManager::updateUserInfo(uint32_t uid) {
     if(!user)return false;
     std::vector<std::pair<string, string>> infos;
     infos.emplace_back(std::make_pair("uid", std::to_string(user->m_userId)));
+    infos.emplace_back(std::make_pair("gender",std::to_string(user->m_gender)));
+    infos.emplace_back(std::make_pair("facetype",std::to_string(user->m_faceType)));
+    infos.emplace_back(std::make_pair("birthday",std::to_string(user->m_birthday)));
     infos.emplace_back(std::make_pair("nickname", user->m_nickName));
 //    infos.emplace_back(std::make_pair("userpass", user->m_userPassword));
-    infos.emplace_back(std::make_pair("account", user->m_userAccount));
-    infos.emplace_back(std::make_pair("phonenumber", user->m_userPhoneNum));
+//    infos.emplace_back(std::make_pair("account", user->m_userAccount));
+    infos.emplace_back(std::make_pair("phonenumber", user->m_userPhoneNumber));
+    infos.emplace_back(std::make_pair("customface",user->m_customFace));
+    infos.emplace_back(std::make_pair("signature",user->m_signature));
+    infos.emplace_back(std::make_pair("address",user->m_address));
+    infos.emplace_back(std::make_pair("mail",user->m_mail));
 
     //将用户信息写入redis
     return m_redis->hashSetKeyValues("user:"+std::to_string(uid)+":hash", infos);
 }
 
-bool EntityManager::updateUserPassowrd(uint32_t uid) {
+bool EntityManager::updateUserPassword(uint32_t uid) {
     auto user = getUserByUid(uid);
     if(!user)return false;
 
@@ -273,6 +309,7 @@ bool EntityManager::breakFriendRelation(uint32_t userAid, uint32_t userBid) {
         return false;
     }
 
+    LOGD("User %d and %d breakup friend relation", userAid, userBid);
     fgroupOfA->delUser(userBid);
     fgroupOfB->delUser(userAid);
     return true;
@@ -330,10 +367,14 @@ bool EntityManager::delFriendGroup(uint32_t uid, const std::string &name) {
         def==user->m_friendGroups.end()){
         return false;
     }
-    //将待删除分组内的用户移动到默认分组
-    if(!copyUsersToOtherFGroup(uid,(*tar)->getId(), (*def)->getId())){
-        return false;
+
+    if(!(*tar)->getUserIds().empty()){
+        //将待删除分组内的用户移动到默认分组
+        if(!copyUsersToOtherFGroup(uid,(*tar)->getId(), (*def)->getId())){
+            return false;
+        }
     }
+
     //开始删除
     auto strId = std::to_string((*tar)->getId());
     if(!m_redis->deleteKey("friendgroup:"+strId+":name:str")){
@@ -345,6 +386,8 @@ bool EntityManager::delFriendGroup(uint32_t uid, const std::string &name) {
     if(!m_redis->setDeleteKey("user:"+std::to_string(uid)+":friendgroup:set", strId)){
         return false;
     }
+
+    LOGD("User %s delete friend gorup %s", user->m_userAccount.c_str(), (*tar)->getName().c_str());
     //从用户好友列表中删除
     user->m_friendGroups.erase(tar);
     return true;
@@ -388,7 +431,8 @@ bool EntityManager::modifyFriendGroup(uint32_t uid,
     if(!m_redis->strSet("friendgroup:"+std::to_string(tar->getId())+":name:str", newName)){
         return false;
     }
-
+    LOGD("User %s change friend group name %s to %s",
+            user->m_userAccount.c_str(), oldName.c_str(), newName.c_str());
     tar->setName(newName);
     return true;
 }
@@ -417,7 +461,8 @@ bool EntityManager::moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
                 std::to_string(fuid))){
         return false;
     }
-
+    LOGD("User:%d Move user:%d from %s to %s", uid, fuid,
+            from->getName().c_str(), to->getName().c_str());
     from->delUser(fuid);
     to->addUser(fuid);
     return true;
@@ -436,6 +481,10 @@ bool EntityManager::copyUsersToOtherFGroup(uint32_t uid,
     for(const auto& fg:user->m_friendGroups){
         if(fg->getId()==fromFGroupId)from = fg;
         if(fg->getId()==toFGroupId)to = fg;
+    }
+    //列表是空的不用复制好友，直接返回
+    if(from->getUserIds().empty()){
+        return true;
     }
 
     std::vector<std::string> uids;
@@ -520,6 +569,7 @@ bool EntityManager::joinGroup(uint32_t gid, uint32_t userId) {
     }
     group->m_groupMembers.insert(userId);
     user->m_groups.insert(gid);
+    LOGD("User %s joined group %s", user->m_userAccount.c_str(), group->m_groupName.c_str());
     return true;
 }
 
@@ -528,13 +578,24 @@ bool EntityManager::quitGroup(uint32_t gid, uint32_t userId) {
     if(!group){
         return false;
     }
+    auto user = getUserByUid(userId);
+    if(!user){
+        return false;
+    }
 
-    //添加userid到redis中
+    //删除userid
     if(!m_redis->setDeleteKey("group:"+std::to_string(gid)+":members:set",
                            std::to_string(userId))){
         return false;
     }
+    if(!m_redis->setDeleteKey("user:"+std::to_string(userId)+":groups:set",
+                           std::to_string(gid))){
+        return false;
+    }
+
+    LOGD("User %s quit group %s", user->m_userAccount.c_str(), group->m_groupName.c_str());
     group->m_groupMembers.erase(userId);
+    user->m_groups.erase(gid);
     return true;
 }
 

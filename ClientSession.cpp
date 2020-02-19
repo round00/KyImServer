@@ -119,6 +119,21 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                 case msg_type_getgroupmembers:
                     onGetGroupMembers(data);
                     break;
+                case msg_type_chat: //单人或群组消息
+                {
+                    int32_t targetId;
+                    reader.ReadInt32(targetId);
+                    onChatMsg(data, targetId);
+                    break;
+                }
+                case msg_type_multichat:    //多人消息
+                {
+                    std::string targets;
+                    size_t tarLen;
+                    reader.ReadString(&targets, 0, tarLen);
+                    onMultiChatMsg(data, targets);
+                    break;
+                }
                 case msg_type_updatefriendgroup:
                 {
                     int op;
@@ -141,13 +156,6 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
                     std::string oldName;
                     reader.ReadString(&oldName, 0, length);
                     onMoveFriendGroup(fuid, newName, oldName);
-                    break;
-                }
-                case msg_type_chat:
-                {
-                    int32_t targetId;
-                    reader.ReadInt32(targetId);
-                    onChatMsg(data, targetId);
                     break;
                 }
                 default:
@@ -225,7 +233,7 @@ void CClientSession::onRegister(std::string &data) {
     //{"username": "13917043329", "nickname": "balloon", "password": "123"}
     UserPtr user(new User());
     user->m_userAccount = value["username"].asString();
-    user->m_userPhoneNum = value["username"].asString();
+    user->m_userPhoneNumber = value["username"].asString();
     user->m_nickName = value["nickname"].asString();
     user->m_userPassword = value["password"].asString();
 
@@ -276,18 +284,18 @@ void CClientSession::onLogin(std::string &data) {
             json["userid"] = m_user->m_userId;
             json["username"] = m_user->m_userAccount;
             json["nickname"] = m_user->m_nickName;
-            json["phonenumber"] = m_user->m_userPhoneNum;
-            //以下字段还未添加
-            json["facetype"] = 0;
-            json["gender"] = 0;
-            json["birthday"] = 0;
-            json["signature"] = "";
-            json["address"] = "";
-            json["customface"] = "";
-            json["mail"] = "";
+            json["phonenumber"] = m_user->m_userPhoneNumber;
+            json["facetype"] = m_user->m_faceType;
+            json["gender"] = m_user->m_gender;
+            json["birthday"] = m_user->m_birthday;
+            json["signature"] = m_user->m_signature;
+            json["address"] = m_user->m_address;
+            json["customface"] = m_user->m_customFace;
+            json["mail"] = m_user->m_mail;
             Json::StreamWriterBuilder builder;
             response = Json::writeString(builder, json);
-            LOGD("User %s(%d) login success", m_user->m_userAccount.c_str(), m_user->m_userId);
+            LOGD("User %s(%d) login success, onlineType=%d, clientType=%d",
+                    m_user->m_userAccount.c_str(), m_user->m_userId, m_user->m_onlineType, m_user->m_clientType);
         }
     }
 
@@ -330,13 +338,12 @@ void CClientSession::onFindUser(std::string &data) {
     Json::Value json;
     json["code"] = 0;
     json["msg"] = "ok";
+    json["userinfo"] = Json::Value(Json::arrayValue);
 
-    bool bFind = false;
     if(type==1){    //查找用户
         std::string username = value["username"].asString();
         UserPtr user = EntityManager::getInstance().getUserByAccount(username);
         if(user){
-            bFind = true;
             Json::Value userinfo;
             userinfo["userid"] = user->m_userId;
             userinfo["username"] = user->m_userAccount;
@@ -346,21 +353,17 @@ void CClientSession::onFindUser(std::string &data) {
         LOGD("User %s find user %s ", m_user->m_userAccount.c_str(), username.c_str());
 
     }else if(type==2){  //查找群
-        uint32_t gid = atoi(value["username"].asCString());
+        std::string groupnumber = value["username"].asString();
+        uint32_t gid = atoi(groupnumber.c_str());
         GroupPtr group = EntityManager::getInstance().getGroupByGid(gid);
         if(group){
-            bFind = true;
             Json::Value userinfo;
             userinfo["userid"] = group->m_groupId;
             userinfo["username"] = std::to_string(group->m_groupId);
             userinfo["nickname"] = group->m_groupName;
             json["userinfo"].append(userinfo);
         }
-        LOGD("User %s find group %d", m_user->m_userAccount.c_str(), gid);
-    }
-
-    if(!bFind){  //查找失败返回好友列表空就行
-        json["userinfo"].append(Json::Value());
+        LOGD("User %s find group %d", m_user->m_userAccount.c_str(), groupnumber.c_str());
     }
 
     std::string response;
@@ -461,15 +464,17 @@ void CClientSession::onUpdateUserInfo(std::string &data) {
     if(!reader.parse(data, value)){
         return;
     }
+    LOGD("User %s update basic info: %s", m_user->m_userAccount.c_str(), data.c_str());
+    if(value["gender"].isInt())m_user->m_gender = value["gender"].asInt();
+    if(value["facetype"].isInt())m_user->m_faceType = value["facetype"].asInt();
+    if(value["birthday"].isInt())m_user->m_birthday = value["birthday"].asInt();
 
     if(value["nickname"].isString())m_user->m_nickName = value["nickname"].asString();
-    if(value["phonenumber"].isString())m_user->m_userPhoneNum = value["phonenumber"].asString();
-    if(value["customface"].isString());
-    if(value["gender"].isInt());
-    if(value["birthday"].isInt());
-    if(value["signature"].isString());
-    if(value["address"].isString());
-    if(value["mail"].isString());
+    if(value["phonenumber"].isString())m_user->m_userPhoneNumber = value["phonenumber"].asString();
+    if(value["customface"].isString())m_user->m_customFace = value["customface"].asString();
+    if(value["signature"].isString())m_user->m_signature = value["signature"].asString();
+    if(value["address"].isString())m_user->m_address = value["address"].asString();
+    if(value["mail"].isString())m_user->m_mail = value["mail"].asString();
     //更新用户信息
     EntityManager::getInstance().updateUserInfo(m_user->m_userId);
 
@@ -510,7 +515,9 @@ void CClientSession::onModifyPassword(std::string &data) {
     }else {
         response = R"({"code":0, "msg":"ok"})";
         m_user->m_userPassword = newpass;
-        EntityManager::getInstance().updateUserPassowrd(m_user->m_userId);
+        EntityManager::getInstance().updateUserPassword(m_user->m_userId);
+        LOGD("User %s modify password oldpass=%s newpass=%s",
+                m_user->m_userAccount.c_str(), oldpass.c_str(), newpass.c_str());
     }
 
     sendPacket(msg_type_modifypassword, m_seq, response);
@@ -575,8 +582,8 @@ void CClientSession::onGetGroupMembers(std::string &data) {
         userinfo["userid"] = user->m_userId;
         userinfo["username"] = user->m_userAccount;
         userinfo["nickname"] = user->m_nickName;
-        userinfo["facetype"] = 0;
-        userinfo["customface"] = "";
+        userinfo["facetype"] = user->m_faceType;
+        userinfo["customface"] = user->m_customFace;
         userinfo["status"] = user->m_onlineType;
         userinfo["clienttype"] = user->m_clientType;
 
@@ -668,6 +675,25 @@ void CClientSession::onChatMsg(std::string &data, uint32_t targetId) {
     }
 }
 
+void CClientSession::onMultiChatMsg(std::string &data, std::string &targets) {
+    LOGD("User %s send message to: %s",
+         m_user->m_userAccount.c_str(), targets.c_str());
+    Json::Reader reader;
+    Json::Value value;
+    if(!reader.parse(targets, value)){
+        return;
+    }
+    if(!value["targets"].isArray()){
+        return;
+    }
+
+    uint32_t targetCount = value["targets"].size();
+    for(uint32_t i = 0;i<targetCount; ++i){
+        uint32_t targetId = value["targets"][i].asUInt();
+        onChatMsg(data, targetId);
+    }
+}
+
 void CClientSession::makeFriendListPackge(std::string& packge) {
     Json::Value json;
     json["code"] = 0;
@@ -675,20 +701,21 @@ void CClientSession::makeFriendListPackge(std::string& packge) {
     for(const auto& friendGroup:m_user->m_friendGroups){
         Json::Value fgroupInfo;
         fgroupInfo["teamname"] = friendGroup->getName();
+        fgroupInfo["members"] = Json::Value(Json::arrayValue);
         for(auto uid:friendGroup->getUserIds()){
             UserPtr fuser = EntityManager::getInstance().getUserByUid(uid);
             Json::Value userinfo;
             userinfo["userid"] = fuser->m_userId;
             userinfo["username"] = fuser->m_userAccount;
             userinfo["nickname"] = fuser->m_nickName;
-            userinfo["facetype"] = 0;
-            userinfo["customface"] = "";
-            userinfo["gender"] = 1;
-            userinfo["birthday"] = 19900101,
-                    userinfo["signature"] = "";
-            userinfo["address"] = "";
-            userinfo["phonenumber"] = fuser->m_userPhoneNum;
-            userinfo["mail"] = "";
+            userinfo["facetype"] = fuser->m_faceType;
+            userinfo["customface"] = fuser->m_customFace;
+            userinfo["gender"] = fuser->m_gender;
+            userinfo["birthday"] = fuser->m_birthday,
+            userinfo["signature"] = fuser->m_signature;
+            userinfo["address"] = fuser->m_address;
+            userinfo["phonenumber"] = fuser->m_userPhoneNumber;
+            userinfo["mail"] = fuser->m_mail;
             userinfo["clienttype"] = fuser->m_clientType;
             userinfo["status"] = fuser->m_onlineType;
             userinfo["markname"] = "";
@@ -766,13 +793,15 @@ void CClientSession::acceptJoinGroup(uint32_t groupId) {
 }
 
 void CClientSession::quitGroup(uint32_t groupId) {
-    if(!EntityManager::getInstance().quitGroup(groupId, m_user->m_userId)){
-        return;
-    }
     auto group = EntityManager::getInstance().getGroupByGid(groupId);
     if(!group){
         return;
     }
+
+    if(!EntityManager::getInstance().quitGroup(groupId, m_user->m_userId)){
+        return;
+    }
+
     //发消息给主动退群的用户
     Json::Value retJson;
     retJson["userid"] = groupId;
@@ -839,7 +868,7 @@ void CClientSession::deleteFriend(uint32_t friendId) {
         return;
     }
 
-    if(EntityManager::getInstance().breakFriendRelation(m_user->m_userId, friendId)){
+    if(!EntityManager::getInstance().breakFriendRelation(m_user->m_userId, friendId)){
         return;
     }
 

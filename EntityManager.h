@@ -17,17 +17,28 @@
 class CFriendGroup;
 
 struct User{
-    User():m_userId(0),m_onlineType(0),m_clientType(0){}
+    User();
     explicit User(const std::vector<std::pair<std::string, std::string>>& userinfo);
 
 
-    uint32_t        m_userId;
-    std::string     m_userAccount;
-    std::string     m_nickName;
-    std::string     m_userPassword;
-    std::string     m_userPhoneNum;
+    uint32_t        m_userId;           //uid
     uint8_t         m_onlineType;       //0：离线，1：在线
     uint8_t         m_clientType;       //1：windows
+    uint8_t         m_gender;
+    uint8_t         m_faceType;
+    uint32_t        m_birthday;
+
+    std::string     m_userAccount;      //注册时写的账号
+    std::string     m_nickName;         //昵称
+    std::string     m_userPassword;
+    std::string     m_userPhoneNumber;     //手机号
+    std::string     m_customFace;       //自定义头像
+    std::string     m_signature;
+    std::string     m_address;
+    std::string     m_mail;
+
+
+
     //用户好友列表
     std::vector<std::shared_ptr<CFriendGroup>>
                     m_friendGroups;
@@ -72,7 +83,7 @@ public:
     UserPtr     getUserByUid(uint32_t uid);
     //这里的更新指的是将数据更新到数据库中
     bool        updateUserInfo(uint32_t uid);
-    bool        updateUserPassowrd(uint32_t uid);
+    bool        updateUserPassword(uint32_t uid);
     UserPtr     getUserByAccount(const std::string& account);
     //获取好友列表
     std::vector<uint32_t> getFriendListById(uint32_t uid);

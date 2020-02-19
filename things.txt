@@ -66,3 +66,5 @@ systemctl start redis
 systemctl enable redis
 启动redis服务
 
+10、如果远程到服务器上运行时老是出现编译链接错误的话，直接ssh到服务器上，
+然后进入到项目的cmake目录下，make clean一下再重新make应该会有帮助
