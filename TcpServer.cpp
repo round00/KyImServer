@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include "TcpServer.h"
 #include "EventLoop.h"
-#include "Buffer.h"
 
 
 CTcpConnection::CTcpConnection(int fd,CWorkThread* worker):

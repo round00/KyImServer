@@ -6,6 +6,7 @@
 #define KYIMSERVER_IMSERVER_H
 
 #include "TcpServer.h"
+#include "Mutex.h"
 #include <memory>
 
 class CClientSession;
@@ -34,7 +35,9 @@ public:
     void        kickUser(uint32_t uid, uint8_t client);
 
 private:
-    std::map<int, std::shared_ptr<CClientSession>>  m_sessions;
+    CMutex      m_mutex;
+    std::map<int, std::shared_ptr<CClientSession>>
+                m_sessions;
 };
 
 #endif //KYIMSERVER_IMSERVER_H

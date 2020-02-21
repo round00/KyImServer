@@ -23,7 +23,7 @@ bool CRedis::init() {
     }
     //如果有设置密码的话，验证密码
     if(!m_password.empty()){
-        auto reply = sendACommand("auth " + m_password);
+        auto reply = sendACommand("auth", m_password);
         if(reply->type == REDIS_REPLY_ERROR){
             fprintf(stderr, "auth failed, err=%s\n", reply->str);
             return false;
@@ -39,9 +39,9 @@ bool CRedis::init() {
     return true;
 }
 
-RedisReply CRedis::sendACommand(const string &cmd) {
+RedisReply CRedis::sendACommand(int argc, const char **argv, const size_t *argvlen) {
     RedisReply reply(static_cast<redisReply*>(
-            ::redisCommand(m_conn.get(), cmd.c_str())), freeReplyObject);
+                             ::redisCommandArgv(m_conn.get(), argc, argv, argvlen)));
     if(reply->type==REDIS_REPLY_ERROR){
         if(m_conn->err==REDIS_ERR_IO){
             fprintf(stderr, "redis command failed, err=%s\n", strerror(errno));
@@ -53,21 +53,89 @@ RedisReply CRedis::sendACommand(const string &cmd) {
     return reply;
 }
 
+RedisReply CRedis::sendACommand(const string &cmd, const string& key) {
+    //构造参数列表
+    const char* argv[2];
+    size_t argvlen[2];
+    argv[0] = cmd.c_str();
+    argvlen[0] = cmd.length();
+    argv[1] = key.c_str();
+    argvlen[1] = key.length();
+
+    return sendACommand(2, argv, argvlen);
+}
+
+RedisReply CRedis::sendACommand(const string &cmd, const string &key, const string &val) {
+    //构造参数列表
+    const char* argv[3];
+    size_t argvlen[3];
+    argv[0] = cmd.c_str();
+    argvlen[0] = cmd.length();
+    argv[1] = key.c_str();
+    argvlen[1] = key.length();
+    argv[2] = val.c_str();
+    argvlen[2] = val.length();
+
+    return sendACommand(3, argv, argvlen);
+}
+
+RedisReply CRedis::sendACommand(const string &cmd, const std::vector<string> &params) {
+    if(params.size()>=MAX_PARAMS){
+        fprintf(stderr, "redis command failed, err=too many params\n");
+        return nullptr;
+    }
+    //构造参数列表
+    const char* argv[MAX_PARAMS+1];
+    size_t argvlen[MAX_PARAMS+1];
+    argv[0] = cmd.c_str();
+    argvlen[0] = cmd.length();
+    int argc = params.size() + 1;
+
+    for(size_t i = 0;i<params.size(); ++i){
+        argv[i+1] = params[i].c_str();
+        argvlen[i+1] = params[i].length();
+    }
+
+    return sendACommand(argc, argv, argvlen);
+}
+
+RedisReply CRedis::sendACommand(const string &cmd, const string &key,
+        const std::vector<string> &params) {
+    if(params.size()>=MAX_PARAMS){
+        fprintf(stderr, "redis command failed, err=too many params\n");
+        return nullptr;
+    }
+    //构造参数列表
+    const char* argv[MAX_PARAMS+2];
+    size_t argvlen[MAX_PARAMS+2];
+    argv[0] = cmd.c_str();
+    argvlen[0] = cmd.length();
+    argv[1] = key.c_str();
+    argvlen[1] = key.length();
+    int argc = params.size() + 2;
+
+    for(size_t i = 0;i<params.size(); ++i){
+        argv[i+2] = params[i].c_str();
+        argvlen[i+2] = params[i].length();
+    }
+
+    return sendACommand(argc, argv, argvlen);
+}
+
 bool CRedis::isConnected() {
-    RedisReply reply = sendACommand("ping");
+    RedisReply reply = sendACommand("ping", std::vector<string>());
     return reply && reply->type==REDIS_REPLY_STATUS
         && strcmp(reply->str, "PONG")==0;
 }
 
 bool CRedis::changeDb(int db) {
-    RedisReply rep = sendACommand("select " + std::to_string(db));
+    RedisReply rep = sendACommand("select", std::to_string(db));
     return rep && rep->type==REDIS_REPLY_STATUS
         &&strcmp(rep->str, "OK")==0;
 }
 
 bool CRedis::deleteKey(const string &key) {
-    string cmd = "del " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("del", key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -76,15 +144,13 @@ bool CRedis::deleteKey(const string &key) {
 
 //=========================字符串相关命令=========================
 bool CRedis::strSet(const string &key, const string &value) {
-    string cmd = "set " + key + " " + value;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("set", key, value);
     return rep && rep->type==REDIS_REPLY_STATUS
            &&strcmp(rep->str, "OK")==0;
 }
 
 string CRedis::strGet(const string &key) {
-    string cmd = "get " + key;
-    RedisReply reply = sendACommand(cmd);
+    RedisReply reply = sendACommand("get", key);
     if(!reply || reply->type==REDIS_REPLY_NIL || !reply->str){
         return "";
     }
@@ -98,8 +164,7 @@ LL CRedis::strGetNumValue(const string &key) {
 }
 
 LL CRedis::strIncr(const string &key) {
-    string cmd = "incr " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("incr", key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return -1;
     }
@@ -107,8 +172,7 @@ LL CRedis::strIncr(const string &key) {
 }
 
 LL CRedis::strIncrBy(const string &key, LL by) {
-    string cmd = "incr " + key + " " +std::to_string(by);
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("incr", key, std::to_string(by));
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return -1;
     }
@@ -116,8 +180,7 @@ LL CRedis::strIncrBy(const string &key, LL by) {
 }
 
 LL CRedis::strDecr(const string &key) {
-    string cmd = "decr " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("decr", key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return -1;
     }
@@ -125,8 +188,7 @@ LL CRedis::strDecr(const string &key) {
 }
 
 LL CRedis::strDecrBy(const string &key, LL by) {
-    string cmd = "decr " + key + " "+std::to_string(by);
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("decr", key, std::to_string(by));
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return -1;
     }
@@ -139,8 +201,7 @@ int CRedis::listLpush(const string &key, int val) {
 }
 
 int CRedis::listLpush(const string &key, const string &val) {
-    string cmd = "lpsuh "+ key + " " + val;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("lpsuh", key, val);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -149,11 +210,7 @@ int CRedis::listLpush(const string &key, const string &val) {
 
 int CRedis::listLpush(const string &key, const std::vector<string> &val) {
     if(val.empty())return 0;
-    string cmd = "lpush " + key;
-    for(const string& s:val){
-        cmd += " " + s;
-    }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("lpush", key, val);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -165,8 +222,7 @@ int CRedis::listRpush(const string &key, int val) {
 }
 
 int CRedis::listRpush(const string &key, const string &val) {
-    string cmd = "rpsuh "+ key + " " + val;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("rpsuh", key, val);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -175,11 +231,7 @@ int CRedis::listRpush(const string &key, const string &val) {
 
 int CRedis::listRpush(const string &key, const std::vector<string> &val) {
     if(val.empty())return 0;
-    string cmd = "rpush " + key;
-    for(const string& s:val){
-        cmd += " " + s;
-    }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("rpush", key, val);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -187,8 +239,7 @@ int CRedis::listRpush(const string &key, const std::vector<string> &val) {
 }
 
 string CRedis::listLpop(const string &key) {
-    string cmd = "lpop " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("lpop", key);
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -196,8 +247,7 @@ string CRedis::listLpop(const string &key) {
 }
 
 string CRedis::listRpop(const string &key) {
-    string cmd = "rpop " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("rpop", key);
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -205,8 +255,11 @@ string CRedis::listRpop(const string &key) {
 }
 
 int CRedis::listDelete(const string &key, const string &val) {
-    string cmd = "lrem " + key + " 0 " + val;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params;
+    params.push_back(key);
+    params.push_back("0");
+    params.push_back(val);
+    RedisReply rep = sendACommand("lrem", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -214,8 +267,7 @@ int CRedis::listDelete(const string &key, const string &val) {
 }
 
 int CRedis::listLength(const string &key) {
-    string cmd = "llen " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("llen", key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -224,8 +276,7 @@ int CRedis::listLength(const string &key) {
 
 
 string CRedis::listGetByIndex(const string &key, int index) {
-    string cmd = "lindex " + key + " " + std::to_string(index);
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("lindex", key, std::to_string(index));
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -233,10 +284,8 @@ string CRedis::listGetByIndex(const string &key, int index) {
 }
 
 std::vector<string> CRedis::listGetByRange(const string &key, int start, int stop) {
-    string cmd = "lrange " + key + " " +
-            std::to_string(start) + " " + std::to_string(stop);
-    std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> res, params={key, std::to_string(start), std::to_string(stop)};
+    RedisReply rep = sendACommand("lrange", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -249,8 +298,8 @@ std::vector<string> CRedis::listGetByRange(const string &key, int start, int sto
 
 //=========================哈希表相关命令=========================
 bool CRedis::hashSetKeyValue(const string &hash, const string &key, const string &val) {
-    string cmd = "hset " + hash + " " + key + " " + val;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {hash, key, val};
+    RedisReply rep = sendACommand("hset", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -259,13 +308,12 @@ bool CRedis::hashSetKeyValue(const string &hash, const string &key, const string
 
 bool CRedis::hashSetKeyValues(const string &hash,
         const std::vector<std::pair<string, string>>& keyvals) {
-    string cmd = "hmset " + hash;
+    std::vector<string> params;
     for(const auto& p:keyvals){
-        if(p.first.empty() || p.second.empty())
-            continue;
-        cmd += " " + p.first + " " + p.second;
+        params.push_back(p.first);
+        params.push_back(p.second);
     }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hmset", hash, params);
     if(!rep || rep->type!=REDIS_REPLY_STATUS){
         return false;
     }
@@ -274,8 +322,7 @@ bool CRedis::hashSetKeyValues(const string &hash,
 }
 
 string CRedis::hashGetValue(const string &hash, const string &key) {
-    string cmd = "hget " + hash + " " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hget", hash, key);
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -283,8 +330,7 @@ string CRedis::hashGetValue(const string &hash, const string &key) {
 }
 
 bool CRedis::hashExistKey(const string &hash, const string &key) {
-    string cmd = "hexists " + hash + " " +key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hexists", hash, key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -292,8 +338,7 @@ bool CRedis::hashExistKey(const string &hash, const string &key) {
 }
 
 int CRedis::hashDeleteKey(const string &hash, const string &key) {
-    string cmd = "hdel " + hash + " " +key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hdel", hash, key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -301,11 +346,7 @@ int CRedis::hashDeleteKey(const string &hash, const string &key) {
 }
 
 int CRedis::hashDeleteKeys(const string &hash, const std::vector<string> &keys) {
-    string cmd = "hdel " + hash;
-    for(const string& key:keys){
-        cmd += " " + key;
-    }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hdel", hash, keys);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -313,8 +354,7 @@ int CRedis::hashDeleteKeys(const string &hash, const std::vector<string> &keys) 
 }
 
 int CRedis::hashLength(const string &hash) {
-    string cmd = "hlen " + hash;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hlen", hash);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -322,8 +362,8 @@ int CRedis::hashLength(const string &hash) {
 }
 
 int CRedis::hashAddByInt(const string &hash, const string &key, int by) {
-    string cmd = "hincrby " + hash + " " + key + " " + std::to_string(by);
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {hash, key, std::to_string(by)};
+    RedisReply rep = sendACommand("hincrby", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -331,9 +371,8 @@ int CRedis::hashAddByInt(const string &hash, const string &key, int by) {
 }
 
 std::vector<string> CRedis::hashGetKeys(const string &hash) {
-    string cmd = "hkeys " + hash;
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hkeys", hash);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -344,9 +383,8 @@ std::vector<string> CRedis::hashGetKeys(const string &hash) {
     return res;
 }
 std::vector<string> CRedis::hashGetValues(const string &hash) {
-    string cmd = "hvals " + hash;
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hvals", hash);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -358,9 +396,8 @@ std::vector<string> CRedis::hashGetValues(const string &hash) {
 }
 
 std::vector<std::pair<string,string>> CRedis::hashGetKeyValues(const string &hash) {
-    string cmd = "hgetall " + hash;
     std::vector<std::pair<string,string>> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("hgetall", hash);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -374,8 +411,7 @@ std::vector<std::pair<string,string>> CRedis::hashGetKeyValues(const string &has
 
 //=========================集合相关命令=========================
 int CRedis::setAddKey(const string &set, const string &key) {
-    string cmd = "sadd " + set + " " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sadd", set, key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -383,11 +419,7 @@ int CRedis::setAddKey(const string &set, const string &key) {
 }
 
 int CRedis::setAddKeys(const string &set, const std::vector<string> &keys) {
-    string cmd = "sadd " + set;
-    for(const string& key:keys){
-        cmd += " " + key;
-    }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sadd", set, keys);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -395,8 +427,7 @@ int CRedis::setAddKeys(const string &set, const std::vector<string> &keys) {
 }
 
 bool CRedis::setExists(const string &set, const string &key) {
-    string cmd = "sismember " + set + " " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sismember", set, key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -404,8 +435,7 @@ bool CRedis::setExists(const string &set, const string &key) {
 }
 
 string CRedis::setRandomDelete(const string &set) {
-    string cmd = "spop " + set;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("spop", set);
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -413,8 +443,7 @@ string CRedis::setRandomDelete(const string &set) {
 }
 
 string CRedis::setRandomGet(const string &set) {
-    string cmd = "srandmember " + set;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("srandmember", set);
     if(!rep || rep->type!=REDIS_REPLY_STRING){
         return "";
     }
@@ -422,8 +451,7 @@ string CRedis::setRandomGet(const string &set) {
 }
 
 int CRedis::setDeleteKey(const string &set, const string &key) {
-    string cmd = "srem " + set + " " + key;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("srem", set, key);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -435,7 +463,7 @@ int CRedis::setDeleteKeys(const string &set, const std::vector<string> &keys) {
     for(const string& key:keys){
         cmd += " " + key;
     }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("srem", set, keys);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -443,8 +471,8 @@ int CRedis::setDeleteKeys(const string &set, const std::vector<string> &keys) {
 }
 
 bool CRedis::setMoveKey(const string &from, const string &to, const string &key) {
-    string cmd = "smove " + from + " " + to + " " + key;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {from, to, key};
+    RedisReply rep = sendACommand("smove", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -452,8 +480,7 @@ bool CRedis::setMoveKey(const string &from, const string &to, const string &key)
 }
 
 int CRedis::setLength(const string &set) {
-    string cmd = "scard " + set;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("scard", set);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -461,9 +488,8 @@ int CRedis::setLength(const string &set) {
 }
 
 std::vector<string> CRedis::setGetKeys(const string &set) {
-    string cmd = "smembers " + set;
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("smembers", set);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -474,12 +500,8 @@ std::vector<string> CRedis::setGetKeys(const string &set) {
 }
 
 std::vector<string> CRedis::setIntersection(const std::vector<string>& sets) {
-    string cmd = "sinter ";
-    for(const string& s:sets){
-        cmd += " " + s;
-    }
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sinter", sets);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -490,12 +512,8 @@ std::vector<string> CRedis::setIntersection(const std::vector<string>& sets) {
 }
 
 std::vector<string> CRedis::setUnion(const std::vector<string>& sets) {
-    string cmd = "sunion ";
-    for(const string& s:sets){
-        cmd += " " + s;
-    }
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sunion", sets);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -506,12 +524,8 @@ std::vector<string> CRedis::setUnion(const std::vector<string>& sets) {
 }
 
 std::vector<string> CRedis::setDifference(const std::vector<string>& sets) {
-    string cmd = "sdiff ";
-    for(const string& s:sets){
-        cmd += " " + s;
-    }
     std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("sdiff", sets);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -523,8 +537,8 @@ std::vector<string> CRedis::setDifference(const std::vector<string>& sets) {
 
 //=========================集合相关命令=========================
 int CRedis::zsetAddItem(const string &zset, double score, const string &name) {
-    string cmd = "zadd " + zset + " " + std::to_string(score) + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {zset, std::to_string(score), name};
+    RedisReply rep = sendACommand("zadd", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -533,12 +547,12 @@ int CRedis::zsetAddItem(const string &zset, double score, const string &name) {
 
 int CRedis::zsetAddItems(const string &zset,
         const std::vector<std::pair<double, string>>& items) {
-    string cmd = "zadd " + zset;
+    std::vector<string> params;
     for(const auto& p:items){
-        if(p.second.empty())continue;
-        cmd += " " + std::to_string(p.first) + " " + p.second;
+        params.push_back(std::to_string(p.first));
+        params.push_back(p.second);
     }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zadd", zset, params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -546,8 +560,7 @@ int CRedis::zsetAddItems(const string &zset,
 }
 
 double CRedis::zsetGetScore(const string &zset, const string &name) {
-    string cmd = "zscore " + zset + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zscore", zset, name);
     if(!rep || rep->type!=REDIS_REPLY_STRING || rep->str[0]==0){
         return DOUBLE_NUL;
     }
@@ -556,8 +569,8 @@ double CRedis::zsetGetScore(const string &zset, const string &name) {
 }
 
 double CRedis::zsetIncrScore(const string &zset, const string &name, double incr) {
-    string cmd = "zincrby " + zset + " " + std::to_string(incr) + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {zset, std::to_string(incr), name};
+    RedisReply rep = sendACommand("zincrby", params);
     if(!rep || rep->type!=REDIS_REPLY_STRING || rep->str[0]==0){
         return DOUBLE_NUL;
     }
@@ -566,8 +579,8 @@ double CRedis::zsetIncrScore(const string &zset, const string &name, double incr
 }
 
 int CRedis::zsetLength(const string &zset) {
-    string cmd = "zcard " + zset;
-    RedisReply rep = sendACommand(cmd);
+    string cmd = " " + zset;
+    RedisReply rep = sendACommand("zcard", zset);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return 0;
     }
@@ -576,10 +589,8 @@ int CRedis::zsetLength(const string &zset) {
 
 std::vector<string> CRedis::zsetGetNameByScoreRange(
         const string &zset, double low, double high) {
-    string cmd = "zcount " + zset + " " + std::to_string(low) +
-            " " + std::to_string(high);
-    std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> res, params = {zset, std::to_string(low), std::to_string(high)};
+    RedisReply rep = sendACommand("zcount", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -591,10 +602,9 @@ std::vector<string> CRedis::zsetGetNameByScoreRange(
 
 std::vector<std::pair<string, double>> CRedis::zsetGetItemByScoreRange(
         const string &zset, double low, double high) {
-    string cmd = "zcount " + zset + " " + std::to_string(low) +
-            " " + std::to_string(high) + " withscores";
+    std::vector<string> params = {zset, std::to_string(low), std::to_string(high), "withscores"};
     std::vector<std::pair<string, double>> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zcount", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -607,10 +617,8 @@ std::vector<std::pair<string, double>> CRedis::zsetGetItemByScoreRange(
 
 std::vector<string> CRedis::zsetGetNameByIndex(
         const string &zset, int start, int end) {
-    string cmd = "zrange " + zset + " " + std::to_string(start) +
-                 " " + std::to_string(end);
-    std::vector<string> res;
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> res, params = {zset, std::to_string(start), std::to_string(end)};
+    RedisReply rep = sendACommand("zrange", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -618,15 +626,13 @@ std::vector<string> CRedis::zsetGetNameByIndex(
         res.emplace_back(rep->element[i]->str);
     }
     return res;
-
 }
 
 std::vector<std::pair<string, double>> CRedis::zsetGetItemByIndex(
         const string &zset, int start, int end) {
-    string cmd = "zrange " + zset + " " + std::to_string(start) +
-                 " " + std::to_string(end) + " withscores";
+    std::vector<string> params = {zset, std::to_string(start), std::to_string(end), "withscores"};
     std::vector<std::pair<string, double>> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zrange", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -639,10 +645,9 @@ std::vector<std::pair<string, double>> CRedis::zsetGetItemByIndex(
 
 std::vector<std::pair<string, double>> CRedis::zsetGetItemByIndexRev(
         const string &zset, int start, int end) {
-    string cmd = "zrevrange " + zset + " " + std::to_string(start) +
-                 " " + std::to_string(end) + " withscores";
+    std::vector<string> params = {zset, std::to_string(start), std::to_string(end), "withscores"};
     std::vector<std::pair<string, double>> res;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zrevrange", params);
     if(!rep || rep->type!=REDIS_REPLY_ARRAY){
         return res;
     }
@@ -654,8 +659,7 @@ std::vector<std::pair<string, double>> CRedis::zsetGetItemByIndexRev(
 }
 
 int CRedis::zsetGetRank(const string &zset, const string &name) {
-    string cmd = "zrank " + zset + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zrank", zset, name);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -663,8 +667,8 @@ int CRedis::zsetGetRank(const string &zset, const string &name) {
 }
 
 int CRedis::zsetGetRankRev(const string &zset, const string &name) {
-    string cmd = "zrevrank " + zset + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    string cmd = " " + zset + " " + name;
+    RedisReply rep = sendACommand("zrevrank", zset, name);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -672,8 +676,8 @@ int CRedis::zsetGetRankRev(const string &zset, const string &name) {
 }
 
 int CRedis::zsetDelItemByName(const string &zset, const string &name) {
-    string cmd = "zrem " + zset + " " + name;
-    RedisReply rep = sendACommand(cmd);
+    string cmd = " " + zset + " " + name;
+    RedisReply rep = sendACommand("zrem", zset, name);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -681,11 +685,7 @@ int CRedis::zsetDelItemByName(const string &zset, const string &name) {
 }
 
 int CRedis::zsetDelItemsByName(const string &zset, const std::vector<string> &names) {
-    string cmd = "zrem " + zset;
-    for(const string& name:names){
-        cmd += " " + name;
-    }
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("zrem", zset, names);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -693,10 +693,8 @@ int CRedis::zsetDelItemsByName(const string &zset, const std::vector<string> &na
 }
 
 int CRedis::zsetDelItemsByRank(const string &zset, int start, int end) {
-    string cmd = "zremrangebyrank " + zset + " " +
-            std::to_string(start) + " " + std::to_string(end);
-
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {zset, std::to_string(start), std::to_string(end)};
+    RedisReply rep = sendACommand("zremrangebyrank", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -704,10 +702,8 @@ int CRedis::zsetDelItemsByRank(const string &zset, int start, int end) {
 }
 
 int CRedis::zsetDelItemsByScore(const string &zset, double low, double high) {
-    string cmd = "zremrangebyscore " + zset + " " +
-                 std::to_string(low) + " " + std::to_string(high);
-
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {zset, std::to_string(low), std::to_string(high)};
+    RedisReply rep = sendACommand("zremrangebyscore", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return INT_NULL;
     }
@@ -716,9 +712,8 @@ int CRedis::zsetDelItemsByScore(const string &zset, double low, double high) {
 
 //=========================Bitset相关命令=========================
 bool CRedis::bsSetBit(const string &bs, int index, bool bit) {
-    string cmd = "setbit " + bs + " " +
-            std::to_string(index) + " " +std::to_string(bit);
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {bs, std::to_string(index), std::to_string(bit)};
+    RedisReply rep = sendACommand("setbit", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -726,8 +721,7 @@ bool CRedis::bsSetBit(const string &bs, int index, bool bit) {
 }
 
 bool CRedis::bsGetBit(const string &bs, int index) {
-    string cmd = "getbit " + bs + " " + std::to_string(index);
-    RedisReply rep = sendACommand(cmd);
+    RedisReply rep = sendACommand("getbit", bs, std::to_string(index));
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -735,9 +729,8 @@ bool CRedis::bsGetBit(const string &bs, int index) {
 }
 
 int CRedis::bsBitCount(const string &bs, int start, int end) {
-    string cmd = "bitcount " + bs + " " +
-            std::to_string(start) + " " + std::to_string(end);
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {bs, std::to_string(start), std::to_string(end)};
+    RedisReply rep = sendACommand("bitcount", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }
@@ -745,9 +738,8 @@ int CRedis::bsBitCount(const string &bs, int start, int end) {
 }
 
 int CRedis::bsGetFirstIndex(const string &bs, bool bit, int start, int end) {
-    string cmd = "bitpos " + bs + " " + std::to_string(bit) + " " +
-                 std::to_string(start) + " " + std::to_string(end);
-    RedisReply rep = sendACommand(cmd);
+    std::vector<string> params = {bs, std::to_string(bit), std::to_string(start), std::to_string(end)};
+    RedisReply rep = sendACommand("bitpos", params);
     if(!rep || rep->type!=REDIS_REPLY_INTEGER){
         return false;
     }

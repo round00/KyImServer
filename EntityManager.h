@@ -11,7 +11,9 @@
 #include <set>
 #include <memory>
 #include <vector>
+#include <atomic>
 #include "Redis.h"
+#include "Mutex.h"
 #include "noncopyable.h"
 
 class CFriendGroup;
@@ -36,7 +38,6 @@ struct User{
     std::string     m_signature;
     std::string     m_address;
     std::string     m_mail;
-
 
 
     //用户好友列表
@@ -124,17 +125,20 @@ private:
     bool        loadAllUsers();
     bool        loadAllGroups();
 
+    //因为用户、群组、好友分组都很可能需要和redis操作，
+    // 所以这里就暂时先用一个锁来操作，先不分开几个锁了
+    CMutex              m_mutex;
+
     UserMap             m_users;        //存储所有用户的信息
     AccountUidMap       m_account2Uid;  //存储用户账号->uid的映射，为了实现按account查找
-    uint32_t            m_maxUserId;    //当前最大的用户ID，新添加用户的时候用这个来分配ID
-    uint32_t            m_maxFriendGroupId; //当前最大的用户ID，新添加分组的时候用这个来分配ID
+    std::atomic<uint32_t> m_maxUserId;    //当前最大的用户ID，新添加用户的时候用这个来分配ID
+    std::atomic<uint32_t> m_maxFriendGroupId; //当前最大的用户ID，新添加分组的时候用这个来分配ID
 
     GroupMap            m_groups;       //存储所有群组的信息
-    uint32_t            m_maxGroupId;   //当前最大的群组ID，新添加的群组用这个来分配ID
+    std::atomic<uint32_t> m_maxGroupId;   //当前最大的群组ID，新添加的群组用这个来分配ID
 
     //存储离线消息
     std::unordered_map<uint32_t , std::vector<std::string>>   m_offlineMsgs;
-
     RedisPtr            m_redis;        //redis实例
 };
 

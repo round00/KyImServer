@@ -10,6 +10,13 @@
 #include <vector>
 using std::string;
 
+//redis命令中的最大参数个数
+const int MAX_PARAMS = 512;
+
+//数值型的非法值
+const int INT_NULL = 0x80000000;
+const double DOUBLE_NUL = -9999999999999999.0;
+
 class CRedis;
 struct redisContext;
 struct redisReply;
@@ -19,9 +26,7 @@ typedef std::shared_ptr<redisReply>     RedisReply;
 typedef std::shared_ptr<redisContext>   RedisConn;
 typedef long long                       LL;
 
-//数值型的非法值
-const int INT_NULL = 0x80000000;
-const double DOUBLE_NUL = -9999999999999999.0;
+
 class CRedis {
 public:
     static RedisPtr connect(const string& ip, int port, const string& passwd="");
@@ -160,7 +165,13 @@ private:
         m_conn(nullptr){}
 
     bool        init();
-    RedisReply  sendACommand(const string& cmd);
+    RedisReply  sendACommand(int argc, const char **argv, const size_t *argvlen);
+    RedisReply  sendACommand(const string& cmd, const string& key);
+    RedisReply  sendACommand(const string& cmd, const string& key, const string& val);
+    RedisReply  sendACommand(const string& cmd, const std::vector<string>& params);
+    RedisReply  sendACommand(const string& cmd, const string& key,
+            const std::vector<string>& params);
+
 
 private:
     string      m_hostIP;

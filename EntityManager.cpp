@@ -150,12 +150,16 @@ bool EntityManager::loadAllGroups() {
 }
 
 int EntityManager::addNewUser(const UserPtr& user) {
-    if(user->m_userAccount.empty()){    //账号为空，不能进行注册
-        return 0;
-    }
-    auto it = m_account2Uid.find(user->m_userAccount);
-    if(it != m_account2Uid.end()){  //已存在该用户
-        return 0;
+
+    {
+        CMutexLock lock(m_mutex);
+        if(user->m_userAccount.empty()){    //账号为空，不能进行注册
+            return 0;
+        }
+        auto it = m_account2Uid.find(user->m_userAccount);
+        if(it != m_account2Uid.end()){  //已存在该用户
+            return 0;
+        }
     }
 
     //添加新用户的话，他还没有uid
@@ -175,22 +179,25 @@ int EntityManager::addNewUser(const UserPtr& user) {
     infos.emplace_back(std::make_pair("address",user->m_address));
     infos.emplace_back(std::make_pair("mail",user->m_mail));
 
-    //将用户信息写入redis
-    if(!m_redis->hashSetKeyValues("user:"+std::to_string(user->m_userId)+":hash", infos)){
-        return 0;
-    }
-    //将用户uid写入所有用户uid集合
-    if(m_redis->setAddKey("user:uid:set", std::to_string(user->m_userId)) == 0){
-        return 0;
-    }
-    //将最大id写入redis
-    if(!m_redis->strSet("user:maxid:str", std::to_string(m_maxUserId))){
-        return 0;
-    }
+    {
+        CMutexLock lock(m_mutex);
+        //将用户信息写入redis
+        if(!m_redis->hashSetKeyValues("user:"+std::to_string(user->m_userId)+":hash", infos)){
+            return 0;
+        }
+        //将用户uid写入所有用户uid集合
+        if(m_redis->setAddKey("user:uid:set", std::to_string(user->m_userId)) == 0){
+            return 0;
+        }
+        //将最大id写入redis
+        if(!m_redis->strSet("user:maxid:str", std::to_string(m_maxUserId))){
+            return 0;
+        }
 
-    //更新服务器内存中的数据
-    m_users[user->m_userId] = user;
-    m_account2Uid[user->m_userAccount] = user->m_userId;
+        //更新服务器内存中的数据
+        m_users[user->m_userId] = user;
+        m_account2Uid[user->m_userAccount] = user->m_userId;
+    }
 
     //为用户添加默认好友分组
     addFriendGroup(user->m_userId, CFriendGroup::DEFAULT_NAME);
@@ -199,6 +206,7 @@ int EntityManager::addNewUser(const UserPtr& user) {
 }
 
 UserPtr EntityManager::getUserByUid(uint32_t uid) {
+    CMutexLock lock(m_mutex);
     auto it = m_users.find(uid);
     if(it==m_users.end())return nullptr;
     return it->second;
@@ -223,6 +231,7 @@ bool EntityManager::updateUserInfo(uint32_t uid) {
     infos.emplace_back(std::make_pair("mail",user->m_mail));
 
     //将用户信息写入redis
+    CMutexLock lock(m_mutex);
     return m_redis->hashSetKeyValues("user:"+std::to_string(uid)+":hash", infos);
 }
 
@@ -230,13 +239,16 @@ bool EntityManager::updateUserPassword(uint32_t uid) {
     auto user = getUserByUid(uid);
     if(!user)return false;
 
+    CMutexLock lock(m_mutex);
     return m_redis->hashSetKeyValue("user:"+std::to_string(uid)+":hash",
             "userpass", user->m_userPassword);
 }
 
 UserPtr EntityManager::getUserByAccount(const std::string &account) {
+    CMutexLock lock(m_mutex);
     auto it = m_account2Uid.find(account);
     if(it==m_account2Uid.end())return nullptr;
+
     auto user = m_users.find(it->second);
     if(user == m_users.end())return nullptr;
     return user->second;
@@ -276,6 +288,7 @@ bool EntityManager::makeFriendRelation(uint32_t userAid, uint32_t userBid) {
         return false;
     }
 
+    CMutexLock lock(m_mutex);
 //    friendgroup:gid:userids:set
     if(!m_redis->setAddKey("friendgroup:"+
     std::to_string(fgroupOfA->getId())+":userids:set", std::to_string(userBid))){
@@ -299,6 +312,7 @@ bool EntityManager::breakFriendRelation(uint32_t userAid, uint32_t userBid) {
         return false;
     }
 
+    CMutexLock lock(m_mutex);
 //    friendgroup:gid:userids:set
     if(!m_redis->setDeleteKey("friendgroup:"+
                            std::to_string(fgroupOfA->getId())+":userids:set", std::to_string(userBid))){
@@ -325,24 +339,28 @@ bool EntityManager::addFriendGroup(uint32_t uid, const std::string &name) {
             return false;
         }
     }
-    user->m_friendGroups.emplace_back(new CFriendGroup(++m_maxFriendGroupId, name));
+    {
+        CMutexLock lock(m_mutex);
+        user->m_friendGroups.emplace_back(new CFriendGroup(++m_maxFriendGroupId, name));
 
-    //将好友分组数据写到redis中
-    auto strFGroupId = std::to_string(m_maxFriendGroupId);
-    if(!m_redis->setAddKey("user:" + std::to_string(uid) + ":friendgroup:set", strFGroupId)){
-        return false;
+        //将好友分组数据写到redis中
+        auto strFGroupId = std::to_string(m_maxFriendGroupId);
+        if(!m_redis->setAddKey("user:" + std::to_string(uid) + ":friendgroup:set", strFGroupId)){
+            return false;
+        }
+
+        if(!m_redis->strSet("friendgroup:"+strFGroupId+":name:str", name)){
+            return false;
+        }
+
+        //将最大id写入redis
+        if(!m_redis->strSet("friendgroup:maxid:str", std::to_string(m_maxFriendGroupId))){
+            return false;
+        }
     }
 
-    if(!m_redis->strSet("friendgroup:"+strFGroupId+":name:str", name)){
-        return false;
-    }
-
-    //将最大id写入redis
-    if(!m_redis->strSet("friendgroup:maxid:str", std::to_string(m_maxFriendGroupId))){
-        return false;
-    }
     LOGD("User %s(%d) add friend group '%s'(%d)", user->m_userAccount.c_str(),
-            uid, name.c_str(), m_maxFriendGroupId);
+            uid, name.c_str(), (int)m_maxFriendGroupId);
     return true;
 }
 
@@ -375,6 +393,7 @@ bool EntityManager::delFriendGroup(uint32_t uid, const std::string &name) {
         }
     }
 
+    CMutexLock lock(m_mutex);
     //开始删除
     auto strId = std::to_string((*tar)->getId());
     if(!m_redis->deleteKey("friendgroup:"+strId+":name:str")){
@@ -427,6 +446,8 @@ bool EntityManager::modifyFriendGroup(uint32_t uid,
     if(!tar){   //旧名字不存在
         return false;
     }
+
+    CMutexLock lock(m_mutex);
     //修改
     if(!m_redis->strSet("friendgroup:"+std::to_string(tar->getId())+":name:str", newName)){
         return false;
@@ -453,6 +474,7 @@ bool EntityManager::moveUserToOtherFGroup(uint32_t uid, uint32_t fuid,
         if(fg->getId()==toFGroupId)to = fg;
     }
 
+    CMutexLock lock(m_mutex);
     if(!m_redis->setDeleteKey("friendgroup:" +std::to_string(fromFGroupId)+ ":userids:set",
                               std::to_string(fuid))){
         return false;
@@ -492,6 +514,7 @@ bool EntityManager::copyUsersToOtherFGroup(uint32_t uid,
         uids.push_back(std::to_string(id));
     }
 
+    CMutexLock lock(m_mutex);
     if(!m_redis->setAddKeys("friendgroup:" +std::to_string(toFGroupId)+ ":userids:set", uids)){
         return false;
     }
@@ -507,18 +530,23 @@ int EntityManager::addNewGroup(const GroupPtr &group) {
     std::vector<std::pair<string, string>> infos;
     infos.emplace_back(std::make_pair("ownerid", std::to_string(group->m_ownerId)));
     infos.emplace_back(std::make_pair("name", group->m_groupName));
-    if(!m_redis->hashSetKeyValues(
-            "group:" + std::to_string(group->m_groupId) + ":hash", infos)){
-        return 0;
-    }
-    if(!m_redis->setAddKey("group:gid:set", std::to_string(group->m_groupId))){
-        return 0;
-    }
-    if(!m_redis->strSet("group:maxid:str", std::to_string(m_maxGroupId))){
-        return 0;
+
+    {
+        CMutexLock lock(m_mutex);
+        if(!m_redis->hashSetKeyValues(
+                "group:" + std::to_string(group->m_groupId) + ":hash", infos)){
+            return 0;
+        }
+        if(!m_redis->setAddKey("group:gid:set", std::to_string(group->m_groupId))){
+            return 0;
+        }
+        if(!m_redis->strSet("group:maxid:str", std::to_string(m_maxGroupId))){
+            return 0;
+        }
+
+        m_groups[group->m_groupId] = group;
     }
 
-    m_groups[group->m_groupId] = group;
     joinGroup(group->m_groupId, group->m_ownerId);
 
     LOGD("Create group success name=%s, owner=%d, newGroupId=%d",
@@ -527,6 +555,7 @@ int EntityManager::addNewGroup(const GroupPtr &group) {
 }
 
 GroupPtr EntityManager::getGroupByGid(uint32_t gid) {
+    CMutexLock lock(m_mutex);
     auto it = m_groups.find(gid);
     if(it == m_groups.end()){
         return nullptr;
@@ -544,6 +573,7 @@ bool EntityManager::updateGroupInfo(uint32_t gid) {
     infos.emplace_back(std::make_pair("ownerid", std::to_string(group->m_groupId)));
     infos.emplace_back(std::make_pair("name", group->m_groupName));
 
+    CMutexLock lock(m_mutex);
     return m_redis->hashSetKeyValues(
             "group:" + std::to_string(group->m_groupId) + ":hash", infos);
 }
@@ -558,6 +588,7 @@ bool EntityManager::joinGroup(uint32_t gid, uint32_t userId) {
         return false;
     }
 
+    CMutexLock lock(m_mutex);
     //添加userid到redis中
     if(!m_redis->setAddKey("group:"+std::to_string(gid)+":members:set",
             std::to_string(userId))){
@@ -583,6 +614,7 @@ bool EntityManager::quitGroup(uint32_t gid, uint32_t userId) {
         return false;
     }
 
+    CMutexLock lock(m_mutex);
     //删除userid
     if(!m_redis->setDeleteKey("group:"+std::to_string(gid)+":members:set",
                            std::to_string(userId))){
@@ -616,11 +648,14 @@ bool EntityManager::isGroupMember(uint32_t groupId, uint32_t userId) {
 }
 
 void EntityManager::addOfflineMsg(uint32_t uid, const std::string &msg) {
+    CMutexLock lock(m_mutex);
     m_offlineMsgs[uid].push_back(msg);
 }
 
 std::vector<std::string> EntityManager::getOfflineMsgs(uint32_t uid) {
     std::vector<std::string> msgs;
+
+    CMutexLock lock(m_mutex);
     auto it = m_offlineMsgs.find(uid);
     if(it == m_offlineMsgs.end()){
         return msgs;
