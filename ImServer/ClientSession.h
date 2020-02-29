@@ -6,20 +6,19 @@
 #define KYIMSERVER_CLIENTSESSION_H
 #include <string>
 #include "EntityManager.h"
+#include "TcpSession.h"
 
-class CTcpConnection;
-class CClientSession{
+class CClientSession : public CTcpSession{
 public:
     explicit CClientSession(CTcpConnection* conn):
-        m_conn(conn),m_seq(0),m_bLogin(false),m_user(nullptr){}
-
-    void        onMessage(CTcpConnection* conn);
-    bool        onPacketDispatch(std::string& packet);
+        CTcpSession(conn),m_bLogin(false),m_user(nullptr),m_seq(0){}
 
     void        sendPacket(int32_t cmd, int32_t seq, std::string& data);
     void        sendPacket(int32_t cmd, int32_t seq, const char* data, size_t dataLen);
     void        send(const std::string& packet);
-    void        sendText(const std::string& packet);
+
+    void        onMessage(CTcpConnection* conn);
+    bool        onPacketDispatch(std::string& packet);
     //使当前Session失效
     void        makeInvalid();
 
@@ -52,10 +51,9 @@ public:
     void        deleteFriend(uint32_t friendId);
 
 private:
-    CTcpConnection*     m_conn;
-    int32_t             m_seq;
     bool                m_bLogin;
     UserPtr             m_user;
+    int32_t             m_seq;
 };
 
 #endif //KYIMSERVER_CLIENTSESSION_H

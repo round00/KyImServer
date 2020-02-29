@@ -4,6 +4,7 @@ set(BASE_SRC
         Mutex.cpp
         Condition.cpp
         Thread.cpp
+        ConfigFile.cpp
         )
 
 add_library(base ${BASE_SRC})

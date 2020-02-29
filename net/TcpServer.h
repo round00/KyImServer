@@ -110,7 +110,6 @@ public:
 private:
     event_base*         m_evBase;
     //主线程通过管道向工作线程发送消息，来通知工作线程有任务
-    //FIXME:其实这里没必要用管道，直接用生产者消费者模式就可以了
     int                 m_fdRead;
     int                 m_fdWrite;
     CTcpServer*         m_tcpServer;

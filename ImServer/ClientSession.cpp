@@ -13,6 +13,38 @@
 #include "ImServer.h"
 #include "FriendCroup.h"
 
+void CClientSession::sendPacket(int32_t cmd, int32_t seq, std::string &data) {
+    sendPacket(cmd, seq, data.c_str(), data.length());
+}
+
+void CClientSession::sendPacket(int32_t cmd, int32_t seq, const char *data, size_t dataLen) {
+    std::string packet;
+    BinaryStreamWriter writer(&packet);
+    writer.WriteInt32(cmd);
+    writer.WriteInt32(seq);
+    writer.WriteCString(data, dataLen);
+    writer.Flush();
+    send(packet);
+}
+
+void CClientSession::send(const std::string &packet) {
+    std::string sendData;
+    chat_msg_header header;
+    header.originsize = packet.length();
+    std::string compressPacket;
+    if(Zlib::compressBuf(packet, compressPacket)){
+        header.compressflag = PACKAGE_COMPRESSED;
+        header.compresssize = compressPacket.length();
+        sendData.append((char*)&header, sizeof(header));
+        sendData.append(compressPacket);
+    }else{
+        header.compressflag = PACKAGE_UNCOMPRESSED;
+        sendData.append((char*)&header, sizeof(header));
+        sendData.append(packet);
+    }
+    CTcpSession::send(sendData);
+}
+
 void CClientSession::onMessage(CTcpConnection *conn) {
 //    fprintf(stderr, "%s called\n", __func__);
     while (true){
@@ -29,7 +61,7 @@ void CClientSession::onMessage(CTcpConnection *conn) {
         if(header.originsize<=0 || header.originsize>=MAX_PACKET_SIZE ||
             header.compresssize<=0 || header.compresssize>=MAX_PACKET_SIZE){
             LOGE("packet size is invalid");
-            sendText("Invaild request");
+//            sendText("Invaild request");
             return;
         }
         //提取包内容
@@ -167,52 +199,6 @@ bool CClientSession::onPacketDispatch(std::string &packet) {
 
     return true;
 }
-
-void CClientSession::sendPacket(int32_t cmd, int32_t seq, std::string &data) {
-    sendPacket(cmd, seq, data.c_str(), data.length());
-}
-
-void CClientSession::sendPacket(int32_t cmd, int32_t seq, const char *data, size_t dataLen) {
-    std::string packet;
-    BinaryStreamWriter writer(&packet);
-    writer.WriteInt32(cmd);
-    writer.WriteInt32(seq);
-    writer.WriteCString(data, dataLen);
-    writer.Flush();
-    send(packet);
-}
-
-void CClientSession::send(const std::string &packet) {
-    if(!m_conn){
-        LOGE("Tcpconnection object is NULL");
-        return;
-    }
-
-    std::string sendData;
-
-    chat_msg_header header;
-    header.originsize = packet.length();
-
-    std::string compressPacket;
-    if(Zlib::compressBuf(packet, compressPacket)){
-        header.compressflag = PACKAGE_COMPRESSED;
-        header.compresssize = compressPacket.length();
-        sendData.append((char*)&header, sizeof(header));
-        sendData.append(compressPacket);
-    }else{
-        header.compressflag = PACKAGE_UNCOMPRESSED;
-        sendData.append((char*)&header, sizeof(header));
-        sendData.append(packet);
-    }
-
-    m_conn->addWriteBuffer(sendData);
-}
-
-void CClientSession::sendText(const std::string &packet) {
-    m_conn->addWriteBuffer(packet);
-}
-
-
 void CClientSession::makeInvalid() {
     m_user = nullptr;
     m_bLogin = false;

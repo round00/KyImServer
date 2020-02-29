@@ -10,6 +10,8 @@ include_directories(
 	/usr/local/include/
 	db/
 	base/
+	net/
+	thirdparty/
 )
 #增加链接库目录
 link_directories(
@@ -18,23 +20,11 @@ link_directories(
 )
 
 add_subdirectory(base)
+add_subdirectory(net)
 add_subdirectory(db)
 add_subdirectory(thirdparty)
 
-include_directories(thirdparty/)
-set(chatserver_src
-		main.cpp
-		ConfigFile.cpp
-		EntityManager.cpp
+add_subdirectory(FileServer)
+add_subdirectory(ImServer)
 
-		EventLoop.cpp
-		TcpServer.cpp
-		ImServer.cpp
-		ClientSession.cpp
-		ProtocolStream.cpp
-		FriendCroup.cpp
-		)
-# 将源代码添加到此项目的可执行文件。
-add_executable (KyImServer ${chatserver_src})
-target_link_libraries(KyImServer base db trdparty event)
 

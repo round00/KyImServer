@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "ConfigFile.h"
-#include "base/util.h"
+#include "util.h"
 
 
 CConfigFile::CConfigFile(const std::string& configFileName)
@@ -19,7 +19,7 @@ void CConfigFile::loadConfig()
 	FILE* fp = ::fopen(m_strFileName.c_str(), "r");
 	if (!fp) 
 	{
-		printf("oepn config file failed. err=%s\n", strerror(errno));
+		printf("open config file failed. err=%s\n", strerror(errno));
 		return;
 	}
 	char buf[256];

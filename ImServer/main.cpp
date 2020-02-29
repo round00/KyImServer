@@ -6,16 +6,27 @@
 #include "EntityManager.h"
 #include "EventLoop.h"
 #include "ImServer.h"
-
-using std::cout;
-using std::endl;
+#include "util.h"
 
 CEventLoop g_eventLoop;
 
-int main()
+int main(int argc, char* argv[])
 {
+    char op = -1;
+    bool bDaemon = false;
+    while((op = ::getopt(argc, argv, "d")) != -1){
+        switch(op){
+            case 'd':
+                bDaemon = true;
+                break;
+        }
+    }
+    if(bDaemon){
+        daemon_run();
+    }
+
     //加载配置文件
-	CConfigFile config("../etc/chatserver.conf");
+	CConfigFile config("../../etc/chatserver.conf");
 	//初始化日志
     std::string logdir = config.getValue("logdir");
     if(!CLogger::init("", LOG_LEVEL_DEBUG)){

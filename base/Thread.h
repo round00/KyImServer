@@ -2,8 +2,8 @@
 // Created by gjk on 2019/12/31.
 //
 
-#ifndef KYIMSERVER_TESTTHREAD_H
-#define KYIMSERVER_TESTTHREAD_H
+#ifndef KYIMSERVER_THREAD_H
+#define KYIMSERVER_THREAD_H
 
 #include "noncopyable.h"
 #include <pthread.h>
@@ -26,4 +26,4 @@ private:
     pthread_t   m_thread;
 };
 
-#endif //KYIMSERVER_TESTTHREAD_H
+#endif //KYIMSERVER_THREAD_H
