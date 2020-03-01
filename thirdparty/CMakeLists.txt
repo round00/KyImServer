@@ -1,6 +1,4 @@
 set(trdparty_src
-        md5.cpp
-
         jsoncpp/json_reader.cpp
         jsoncpp/json_value.cpp
         jsoncpp/json_writer.cpp

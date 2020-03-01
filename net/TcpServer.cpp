@@ -187,6 +187,9 @@ bool CTcpServer::init(CEventLoop *loop, int listenport, int thread) {
             -1, (struct sockaddr*)&sin, sizeof sin);
     //启动工作线程
     m_threadCount = thread;
+    if(m_threadCount<1){
+        m_threadCount = 1;
+    }
     for(int i = 0;i<m_threadCount; ++i){
         CWorkThread* worker = new CWorkThread(this);
         worker->start();
