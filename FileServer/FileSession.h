@@ -9,7 +9,7 @@
 class CFileSession : public CTcpSession{
 public:
     explicit CFileSession(CTcpConnection* conn):
-        CTcpSession(conn), m_seq(0){
+        CTcpSession(conn), m_seq(0), m_pFile(NULL){
         resetFileInfo();
     }
 

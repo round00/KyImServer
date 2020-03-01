@@ -27,7 +27,7 @@ bool FileManager::loadAllFiles() {
     if(!fileDir){
         fprintf(stderr, "open file dir failed");
         //打开失败尝试创建
-        if(::mkdir(m_fileDir.c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH) != 0){
+        if(::mkdir(m_fileDir.c_str(), S_IRWXU|S_IRWXG) != 0){
             fprintf(stderr, "create file dir failed, err=%s", strerror(errno));
             return false;
         }
@@ -38,11 +38,14 @@ bool FileManager::loadAllFiles() {
     //读取目录中的文件列表
     struct dirent* file;
     while((file = ::readdir(fileDir))){
-        m_allFiles.insert(file->d_name);
+        if(file->d_type == DT_REG) {    //常规文件
+            m_allFiles.insert(file->d_name);
+        }
     }
 
     ::closedir(fileDir);
-    LOGI("FileManager::loadAllFiles success");
+    LOGI("FileManager::loadAllFiles success, filedir=%s, file number=%d",
+            m_fileDir.c_str(), m_allFiles.size());
     return true;
 }
 

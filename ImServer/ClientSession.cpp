@@ -55,7 +55,7 @@ void CClientSession::onMessage(CTcpConnection *conn) {
         }
         //提取包头
         chat_msg_header header;
-        conn->retriveBuffer((char*)&header, sizeof(header));
+        conn->peekBuffer((char*)&header, sizeof(header));
 //        fprintf(stderr, "compress=%d, ori length=%d, com length=%d\n",
 //                header.compressflag, header.originsize, header.compresssize);
         if(header.originsize<=0 || header.originsize>=MAX_PACKET_SIZE ||
@@ -64,6 +64,13 @@ void CClientSession::onMessage(CTcpConnection *conn) {
 //            sendText("Invaild request");
             return;
         }
+
+        // 验证现在的数据是否已经够完整的包的数据量了，
+        // 因为可能客户端发的数据很长但是每次只接收一点，我们要等它都接收完后再读出来
+        if(conn->readableLength() < sizeof(header) + header.compresssize){
+            return;
+        }
+        conn->retriveBuffer((char*)&header, sizeof(header));
         //提取包内容
         std::string packet;
         if(header.compressflag==PACKAGE_COMPRESSED){

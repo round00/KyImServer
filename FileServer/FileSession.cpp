@@ -33,19 +33,25 @@ void CFileSession::sendPacket(int32_t cmd, int32_t seq, int32_t errcode,
 
 void CFileSession::onMessage(CTcpConnection *conn) {
     while (true){
-        int readable = conn->readableLength();
         if(conn->readableLength() < sizeof(file_msg_header)){
             return;
         }
-        //提取包头
+        //提取包头，先验证一次包头是否合法
         file_msg_header header;
-        conn->retriveBuffer((char*)&header, sizeof(header));
+        conn->peekBuffer((char*)&header, sizeof(header));
         if(header.packagesize<=0 || header.packagesize>=MAX_PACKET_SIZE){
             LOGE("packet size is invalid");
             return;
         }
+
+        // 验证现在的数据是否已经够完整的包的数据量了，
+        // 因为可能客户端发的数据很长但是每次只接收一点，我们要等它都接收完后再读出来
+        if(conn->readableLength() < sizeof(header) + header.packagesize){
+            return;
+        }
         //提取包内容
         std::string packet;
+        conn->retriveBuffer((char*)&header, sizeof(header));
         conn->retriveBuffer(packet, header.packagesize);
         //分发处理包
         if(!onPacketDispatch(packet)){
@@ -110,7 +116,6 @@ void CFileSession::onUploadFile(const std::string &fmd5, uint64_t offset,
         uint64_t fsize, std::string &data) {
     //文件已存在，并且文件指针也为空，说明这个文件已经上传过了
     if(FileManager::getInstance().fileExists(fmd5) && !m_pFile){
-        std::string blank;
         sendPacket(msg_type_upload_resp, m_seq,file_msg_error_complete ,fmd5, fsize, fsize);
         return;
     }
@@ -127,7 +132,7 @@ void CFileSession::onUploadFile(const std::string &fmd5, uint64_t offset,
         std::string filename = FileManager::getInstance().getFileDir() + fmd5;
         m_pFile = fopen(filename.c_str(), "wb");
         if(!m_pFile){
-            LOGE("upload file: create file failed, err=%s\", strerror(errno)");
+            LOGE("upload file: create file failed, err=%s", strerror(errno));
             return;
         }
     }
@@ -146,19 +151,21 @@ void CFileSession::onUploadFile(const std::string &fmd5, uint64_t offset,
     }
 
     uint32_t errcode = file_msg_error_progress;
-    offset += nWrite;
-    if(offset == fsize){
+//    offset += nWrite;
+    if(offset + nWrite == fsize){
         errcode = file_msg_error_complete;
         FileManager::getInstance().addFile(fmd5);
-        resetFileInfo();
     }
 
-    sendPacket(msg_type_upload_req, m_seq, errcode, fmd5, offset, fsize);
+    sendPacket(msg_type_upload_resp, m_seq, errcode, fmd5, offset, fsize);
     LOGI("upload file: %s has uploaded %.2lf%%", fmd5.c_str(), (double)offset/fsize*100);
+    if(errcode == file_msg_error_complete){
+        resetFileInfo();
+    }
 }
 
 void CFileSession::onDownloadFile(const std::string &fmd5, int netType) {
-    //文件步存在
+    //文件不存在
     if(!FileManager::getInstance().fileExists(fmd5)){
         LOGI("download %s, this file not exists");
         sendPacket(msg_type_download_resp, m_seq, file_msg_error_not_exist, fmd5, 0, 0);
@@ -205,13 +212,15 @@ void CFileSession::onDownloadFile(const std::string &fmd5, int netType) {
     int errcode = file_msg_error_progress;
     if(m_downloadFileOffset == m_downloadFileSize){
         errcode = file_msg_error_complete;
-        resetFileInfo();
     }
 
     sendPacket(msg_type_download_resp, m_seq, errcode, fmd5, offset,
-            m_downloadFileSize, std::string(buf, nRead));
+               m_downloadFileSize, std::string(buf, nRead));
     LOGI("download: %s has download %2.lf%%", fmd5.c_str(),
-            (double)m_downloadFileOffset/m_downloadFileSize*100);
+         (double)m_downloadFileOffset/m_downloadFileSize*100);
+    if(errcode == file_msg_error_complete){
+        resetFileInfo();
+    }
 }
 
 void CFileSession::resetFileInfo() {
